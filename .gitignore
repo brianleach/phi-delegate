@@ -1,0 +1,14 @@
+# Delegation working state (may contain PHI: never commit)
+.phi-worktrees/
+.phi-tasks/
+
+# Logs
+*.log
+
+# Secrets
+.env
+.env.*
+
+# OS noise
+.DS_Store
+!.env.example
