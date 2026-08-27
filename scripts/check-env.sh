@@ -65,9 +65,18 @@ else
     "run install.sh --with-guard so the orchestrator session is mechanically blocked from reading .phi-worktrees/"
 fi
 
+# Temp artifacts are removed by the EXIT trap so an interrupted run (Ctrl-C
+# during the smoke test) leaves nothing behind.
+body_file=""
+smoke_cfg="$PHI_DELEGATE_CONFIG_DIR/smoke-$$"
+cleanup() {
+  [ -n "$body_file" ] && rm -f "$body_file"
+  rm -rf "$smoke_cfg"
+}
+trap cleanup EXIT
+
 if [ -n "${PHI_DELEGATE_API_KEY:-}" ] && command -v curl >/dev/null 2>&1; then
   body_file="$(mktemp "${TMPDIR:-/tmp}/phi-check.XXXXXX")"
-  trap 'rm -f "$body_file"' EXIT
   http_code="$(curl -sS -o "$body_file" -w '%{http_code}' --max-time 30 \
     -X POST "https://api.anthropic.com/v1/messages" \
     -H "x-api-key: ${PHI_DELEGATE_API_KEY}" \
@@ -84,17 +93,17 @@ fi
 
 if [ "$failures" -eq 0 ]; then
   printf '...   smoke test: claude -p via phi-claude.sh (timeout %ss)\n' "$SMOKE_TIMEOUT_SECS"
-  # Same hygiene as delegate.sh: a throwaway config dir that is removed
-  # afterwards, and no session persistence, so the smoke test leaves no
-  # session state behind.
-  smoke_cfg="$(mktemp -d "${TMPDIR:-/tmp}/phi-smoke-cfg.XXXXXX")"
+  # Same hygiene as delegate.sh: a throwaway per-run config dir under the
+  # delegate config dir (removed by the EXIT trap) and no session
+  # persistence, so the smoke test leaves no session state behind.
+  mkdir -p "$smoke_cfg"
+  chmod 700 "$smoke_cfg"
   if smoke_output=$(PHI_DELEGATE_CONFIG_DIR="$smoke_cfg" with_timeout "$SMOKE_TIMEOUT_SECS" "$SCRIPT_DIR/phi-claude.sh" "$model" \
     -p --no-session-persistence "Reply with the single word: ready" </dev/null 2>&1) && [ -n "$smoke_output" ]; then
     pass "smoke test succeeded ($(printf '%s' "$smoke_output" | tail -c 100 | tr '\n' ' '))"
   else
     fail "smoke test failed" "try: scripts/phi-claude.sh $model -p 'say hello'. Output: $(printf '%s' "$smoke_output" | tail -c 300 | tr '\n' ' ')"
   fi
-  rm -rf "$smoke_cfg"
 else
   echo "skip  smoke test (fix the failures above first)"
 fi
