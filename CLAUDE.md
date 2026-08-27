@@ -33,9 +33,16 @@ names.
 - Bash scripts use `set -euo pipefail` and must be shellcheck clean.
 - No em dashes anywhere in generated docs. Use hyphens, commas, or colons.
 - Never write API keys, PHI, or absolute home paths into committed files.
-- Runtime state lives under `.phi-worktrees/` (worktrees, quarantined
-  logs, handoffs) and `.phi-tasks/` (task specs) in the target repo. Both
-  are gitignored there via `.git/info/exclude` and must stay that way.
+- Runtime state lives under `.phi-worktrees/` (worktrees, clean
+  handoffs, run records) and `.phi-tasks/` (task specs) in the target
+  repo. Both are gitignored there via `.git/info/exclude` and must stay
+  that way.
+- Leave no PHI on disk: transcripts and the per-run CLAUDE_CONFIG_DIR are
+  deleted when a run ends, flagged handoffs are deleted unread, and
+  merge/reject deletes the spec, handoff, and records (`secure_rm`, best
+  effort). Any new artifact must follow the same rule.
+- The guard hook exempts calls that target this repo's own resolved path
+  so the skill can be developed from an orchestrator session.
 - Default model is `claude-opus-5`. Fable and Mythos class models are
   refused because they are not offered under zero data retention.
 - The delegate reaches Anthropic only through per-invocation environment

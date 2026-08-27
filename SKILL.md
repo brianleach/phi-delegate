@@ -119,6 +119,9 @@ Then take one action:
 ### 6. Commit and clean up
 
 Follow the user's commit conventions (`/commit` if their setup requires
-it). Never commit `.phi-tasks/` or `.phi-worktrees/`. After a task is
-fully closed, remind the user that quarantined logs and handoffs remain
-under `.phi-worktrees/` and should be deleted when no longer needed.
+it). Never commit `.phi-tasks/` or `.phi-worktrees/`. `collect.sh
+--merge` and `--reject` delete the spec, the handoff, and the run
+records; the transcript and the delegate's session state were already
+deleted when the run ended. Do not keep your own copies of a spec's
+Private input section. If the user set `PHI_DELEGATE_KEEP_LOG=1` for
+debugging, remind them the kept log is theirs to delete.

@@ -23,14 +23,18 @@ Behavior:
   - creates a worktree under .phi-worktrees/<name> on branch phi/<name>,
     branched off the current branch (directory mode 700)
   - copies the spec into the worktree as .phi-task.md and runs claude -p
-    there via phi-claude.sh; the raw transcript goes to
-    .phi-worktrees/<name>.log (mode 600, quarantined: never read it from
-    the orchestrator session)
+    there via phi-claude.sh with a per-run CLAUDE_CONFIG_DIR that is
+    deleted when the run ends (no session history survives)
+  - the raw transcript is written to a temp file, checked for permission
+    denials, then securely deleted. Set PHI_DELEGATE_KEEP_LOG=1 to keep it
+    at .phi-worktrees/<name>.log (mode 600) for human debugging only
   - the delegate is told to write a PHI-free handoff to .phi-handoff.md;
-    that file is moved to .phi-worktrees/<name>.handoff.md, run through
-    phi-scan.sh, and printed only when the scan is clean
+    that file is moved to .phi-worktrees/<name>.handoff.md and run through
+    phi-scan.sh. Clean: printed and kept until collect.sh merges or
+    rejects. Flagged: deleted immediately, nothing is printed
   - auto-commits any changes the model left uncommitted, after removing
     .phi-task.md and .phi-handoff.md from the tree
+  - records the spec path so collect.sh can delete it on merge/reject
   - with --pr: pushes phi/<name> to origin and opens a draft PR whose body
     is the scanned handoff (never the spec or the log)
   - prints a diff --stat against the base branch
@@ -50,6 +54,23 @@ with_timeout() {
   else
     perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
   fi
+}
+
+# Best-effort secure delete. On APFS and SSDs an overwrite is not a
+# guarantee of physical erasure, so treat full-disk encryption as the real
+# control; this keeps the file from being trivially recoverable.
+secure_rm() {
+  local f
+  for f in "$@"; do
+    [ -e "$f" ] || continue
+    if command -v shred >/dev/null 2>&1; then
+      shred -u "$f" 2>/dev/null || rm -f "$f"
+    elif rm -P "$f" 2>/dev/null; then
+      :
+    else
+      rm -f "$f"
+    fi
+  done
 }
 
 spec_file=""
@@ -119,8 +140,20 @@ fi
 state_dir="$repo_root/.phi-worktrees"
 wt_dir="$state_dir/$name"
 branch="phi/$name"
-log_file="$state_dir/$name.log"
 handoff_file="$state_dir/$name.handoff.md"
+keep_log="${PHI_DELEGATE_KEEP_LOG:-0}"
+if [ "$keep_log" = "1" ]; then
+  log_file="$state_dir/$name.log"
+else
+  log_file="$(mktemp "${TMPDIR:-/tmp}/phi-delegate-log.XXXXXX")"
+fi
+run_config_dir="$PHI_DELEGATE_CONFIG_DIR/run-$name-$$"
+# shellcheck disable=SC2329  # invoked via trap
+cleanup() {
+  rm -rf "$run_config_dir"
+  if [ "$keep_log" != "1" ]; then secure_rm "$log_file"; fi
+}
+trap cleanup EXIT
 
 if [ -e "$wt_dir" ]; then
   echo "error: worktree already exists: $wt_dir (collect or reject it first)" >&2
@@ -142,6 +175,8 @@ done
 echo "==> creating worktree on branch $branch (base: $base_branch)"
 git worktree add -b "$branch" "$wt_dir" "$base_branch" >/dev/null
 printf '%s\n' "$base_branch" >"$state_dir/$name.base"
+printf '%s\n' "$spec_file" >"$state_dir/$name.spec"
+chmod 600 "$state_dir/$name.spec"
 
 cp "$spec_file" "$wt_dir/.phi-task.md"
 chmod 600 "$wt_dir/.phi-task.md"
@@ -152,14 +187,21 @@ You are running in a HIPAA-covered, zero-data-retention session. The person who 
 
 touch "$log_file"
 chmod 600 "$log_file"
+mkdir -p "$run_config_dir"
+chmod 700 "$run_config_dir"
 
 echo "==> running isolated claude -p (model: $model, timeout: ${RUN_TIMEOUT_SECS}s)"
-echo "==> raw transcript quarantined at .phi-worktrees/$name.log (do not read from the orchestrator session)"
+if [ "$keep_log" = "1" ]; then
+  echo "==> PHI_DELEGATE_KEEP_LOG=1: raw transcript kept at .phi-worktrees/$name.log (never read it from the orchestrator session)"
+else
+  echo "==> raw transcript and delegate session state are deleted when the run ends"
+fi
 
 run_status=0
 (
   cd "$wt_dir"
-  with_timeout "$RUN_TIMEOUT_SECS" "$SCRIPT_DIR/phi-claude.sh" "$model" \
+  PHI_DELEGATE_CONFIG_DIR="$run_config_dir" \
+    with_timeout "$RUN_TIMEOUT_SECS" "$SCRIPT_DIR/phi-claude.sh" "$model" \
     -p --permission-mode acceptEdits --allowedTools Bash \
     --no-session-persistence \
     --output-format stream-json --verbose \
@@ -183,6 +225,8 @@ if [ -f "$wt_dir/.phi-handoff.md" ]; then
   chmod 600 "$handoff_file"
   if scan_out="$("$SCRIPT_DIR/phi-scan.sh" "$handoff_file" 2>&1)"; then
     handoff_clean=1
+  else
+    secure_rm "$handoff_file"
   fi
 else
   scan_out="(delegate did not write a handoff)"
@@ -243,8 +287,9 @@ if [ "$handoff_clean" -eq 1 ]; then
   echo
   cat "$handoff_file"
 else
-  echo "==> handoff WITHHELD: $scan_out"
-  echo "    A human must read .phi-worktrees/$name.handoff.md outside the orchestrator session."
+  echo "==> handoff WITHHELD and deleted: $scan_out"
+  echo "    The work is on branch $branch for human review. To get a summary, reject and re-delegate"
+  echo "    with revision feedback telling the delegate to keep identifiers out of the handoff."
 fi
 echo
 echo "next: scripts/collect.sh $name           # stat + scan, then --merge"

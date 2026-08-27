@@ -15,8 +15,9 @@ setup() {
   [[ "$output" == *"handoff (phi-scan clean)"* ]]
   [[ "$output" == *"Updated seed.txt"* ]]
   [[ "$output" != *'"type":"result"'* ]]
-  [ -f .phi-worktrees/01-task.log ]
-  [ "$(stat -f '%Lp' .phi-worktrees/01-task.log 2>/dev/null || stat -c '%a' .phi-worktrees/01-task.log)" = "600" ]
+  [ ! -f .phi-worktrees/01-task.log ]
+  [ -f .phi-worktrees/01-task.handoff.md ]
+  [ -z "$(ls -A "$PHI_DELEGATE_CONFIG_DIR" 2>/dev/null)" ]
   [ ! -f .phi-worktrees/01-task/.phi-task.md ]
   [ ! -f .phi-worktrees/01-task/.phi-handoff.md ]
   git show-ref --verify --quiet refs/heads/phi/01-task
@@ -30,6 +31,14 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"handoff WITHHELD"* ]]
   [[ "$output" != *"123-45-6789"* ]]
+  [ ! -f .phi-worktrees/01-task.handoff.md ]
+}
+
+@test "PHI_DELEGATE_KEEP_LOG=1 keeps the transcript at mode 600" {
+  PHI_DELEGATE_KEEP_LOG=1 run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md"
+  [ "$status" -eq 0 ]
+  [ -f .phi-worktrees/01-task.log ]
+  [ "$(stat -f '%Lp' .phi-worktrees/01-task.log 2>/dev/null || stat -c '%a' .phi-worktrees/01-task.log)" = "600" ]
 }
 
 @test "collect shows stat and merges after review" {
@@ -42,6 +51,9 @@ setup() {
   [ "$status" -eq 0 ]
   grep -q 'delegate wrote this' seed.txt
   [ ! -d .phi-worktrees/01-task ]
+  [ ! -f .phi-worktrees/01-task.handoff.md ]
+  [ ! -f .phi-worktrees/01-task.spec ]
+  [ ! -f "${BATS_TEST_TMPDIR}/01-task.md" ]
 }
 
 @test "collect --reject removes worktree and branch" {
@@ -50,6 +62,7 @@ setup() {
   [ "$status" -eq 0 ]
   [ ! -d .phi-worktrees/01-task ]
   ! git show-ref --verify --quiet refs/heads/phi/01-task
+  [ ! -f "${BATS_TEST_TMPDIR}/01-task.md" ]
 }
 
 @test "refuses on detached HEAD" {

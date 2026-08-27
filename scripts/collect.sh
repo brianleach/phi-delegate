@@ -14,9 +14,11 @@ Modes:
                (only if its scan is clean). Safe for the orchestrator.
   --merge      merge phi/<name> into the base branch and remove the worktree;
                pushes the base branch and deletes the remote branch when an
-               origin exists (a rejected push only warns)
-  --reject     discard the worktree, its branch, and its records; closes an
-               open PR and deletes the remote branch when possible
+               origin exists (a rejected push only warns). Deletes the
+               handoff, the spec file, any kept log, and the run records.
+  --reject     discard the worktree, its branch, and its records (same
+               deletions as --merge); closes an open PR and deletes the
+               remote branch when possible
   --full-diff  print the complete diff. FOR HUMANS ONLY: the guard hook
                blocks this flag inside the orchestrator session because the
                diff may carry PHI.
@@ -25,6 +27,32 @@ Options:
   --base <branch>   override the recorded base branch
 USAGE
   exit 1
+}
+
+secure_rm() {
+  local f
+  for f in "$@"; do
+    [ -e "$f" ] || continue
+    if command -v shred >/dev/null 2>&1; then
+      shred -u "$f" 2>/dev/null || rm -f "$f"
+    elif rm -P "$f" 2>/dev/null; then
+      :
+    else
+      rm -f "$f"
+    fi
+  done
+}
+
+# Remove every PHI-bearing record for a task: the spec (Private input),
+# the handoff, a kept transcript, and the bookkeeping files.
+purge_records() {
+  local spec_path
+  if [ -f "$spec_record" ]; then
+    spec_path="$(cat "$spec_record")"
+    [ -f "$spec_path" ] && secure_rm "$spec_path"
+  fi
+  secure_rm "$handoff_file" "$log_file"
+  rm -f "$base_file" "$spec_record"
 }
 
 name=""
@@ -59,6 +87,7 @@ branch="phi/$name"
 base_file="$state_dir/$name.base"
 log_file="$state_dir/$name.log"
 handoff_file="$state_dir/$name.handoff.md"
+spec_record="$state_dir/$name.spec"
 
 if [ "$mode" = "reject" ]; then
   git worktree prune
@@ -75,8 +104,8 @@ if [ "$mode" = "reject" ]; then
   fi
   [ -d "$wt_dir" ] && git worktree remove --force "$wt_dir"
   git show-ref --verify --quiet "refs/heads/$branch" && git branch -D "$branch" >/dev/null
-  rm -f "$base_file"
-  echo "done (quarantined log and handoff kept under .phi-worktrees/; delete them with: rm -f $log_file $handoff_file)"
+  purge_records
+  echo "done: worktree, branch, spec, handoff, and records removed"
   exit 0
 fi
 
@@ -145,5 +174,5 @@ if git remote get-url origin >/dev/null 2>&1; then
 fi
 git worktree remove --force "$wt_dir"
 git branch -D "$branch" >/dev/null 2>&1 || true
-rm -f "$base_file"
-echo "==> merged and cleaned up (quarantined log and handoff kept under .phi-worktrees/)"
+purge_records
+echo "==> merged; worktree, spec, handoff, and records removed"

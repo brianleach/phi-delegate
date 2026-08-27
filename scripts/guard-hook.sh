@@ -13,6 +13,23 @@ set -euo pipefail
 
 payload="$(cat)"
 
+# Developing this skill means editing files that name the quarantined
+# paths. Exempt tool calls that target the skill repo itself, either by
+# running with cwd inside it or by naming its resolved path explicitly.
+# No delegate ever runs there. This is a developer convenience and it
+# assumes an honest orchestrator; it is not a security boundary.
+repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+cwd="$(printf '%s' "$payload" | sed -n 's/.*"cwd":"\([^"]*\)".*/\1/p' | head -n 1)"
+if [ -n "$cwd" ] && [ -d "$cwd" ]; then
+  cwd="$(cd "$cwd" && pwd -P)"
+  case "$cwd" in
+    "$repo_dir" | "$repo_dir"/*) exit 0 ;;
+  esac
+fi
+if printf '%s' "$payload" | grep -qF -- "$repo_dir"; then
+  exit 0
+fi
+
 blocked_reason=""
 if printf '%s' "$payload" | grep -q -E '\.phi-worktrees'; then
   blocked_reason=".phi-worktrees/ holds delegate worktrees and raw transcripts that may contain PHI"

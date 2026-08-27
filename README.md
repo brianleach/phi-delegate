@@ -22,7 +22,8 @@ subscription to do PHI work.
 | Endpoint | `ANTHROPIC_BASE_URL` is forced to `https://api.anthropic.com` via both the environment and `--settings`, which outranks the target repo's `.claude/settings.json`. |
 | Egress | `--strict-mcp-config` disables every MCP server; `WebSearch` and `WebFetch` are disallowed; telemetry and error reporting are off. |
 | Model | Default `claude-opus-5`. Fable and Mythos class models are refused because they are not offered under ZDR. |
-| Output | Raw transcript is written to `.phi-worktrees/<name>.log` (mode 600) and never printed. The delegate writes a handoff that is moved out of the tree, scanned by `phi-scan.sh`, and shown only when clean. |
+| Output | The raw transcript goes to a temp file, is checked for permission denials, and is securely deleted when the run ends (opt in to keeping it with `PHI_DELEGATE_KEEP_LOG=1`, mode 600, humans only). The delegate writes a handoff that is moved out of the tree and scanned by `phi-scan.sh`: clean handoffs are shown, flagged ones are deleted unread. |
+| Residue | Each run gets its own `CLAUDE_CONFIG_DIR` subdirectory, deleted afterwards, so no history or debug logs survive. `collect.sh --merge` and `--reject` delete the handoff, the spec (including its Private input), any kept log, and the run records. After a task closes, the only PHI-adjacent thing left is the git branch itself, which is what the human reviews. |
 | Orchestrator | `SKILL.md` forbids reading delegate artifacts. `install.sh --with-guard` adds a PreToolUse hook that mechanically blocks Read/Bash/Grep/Glob calls referencing `.phi-worktrees/`, handoff copies, or `--full-diff`. |
 | Specs | Specs must be PHI-free. A `## Private input` section is filled by the human in their own editor; the orchestrator never reads it back. |
 
@@ -74,8 +75,10 @@ In any repo, tell Claude Code "this touches PHI, delegate it" (or invoke
    `scripts/collect.sh <name> --full-diff` in your own terminal) and
    approve before `scripts/collect.sh <name> --merge`
 
-Quarantined logs and handoffs stay under `.phi-worktrees/` until you
-delete them.
+Nothing PHI-bearing is left behind: the transcript and the delegate's
+session state are deleted when the run ends, and merge or reject deletes
+the spec and the handoff. Secure deletion is best effort (`shred` or
+`rm -P`); on APFS and SSDs full-disk encryption is the real control.
 
 ## Compliance notes
 
@@ -83,8 +86,9 @@ This tool reduces the surface through which PHI can reach an uncovered
 session; it does not by itself make a workflow HIPAA compliant. You still
 need the BAA, ZDR enabled on the org, access controls on the databases the
 delegate reaches, and human review of every change. Local artifacts under
-`.phi-worktrees/` and the delegate's `CLAUDE_CONFIG_DIR` live on your
-machine and fall under your device controls.
+the delegate creates on your machine are deleted after each task, but the
+overwrite is best effort, so FileVault or equivalent disk encryption is
+still required.
 
 ## Development
 

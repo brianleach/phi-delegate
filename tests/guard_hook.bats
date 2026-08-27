@@ -23,3 +23,8 @@ setup() { HOOK="$(phi_repo_root)/scripts/guard-hook.sh"; }
   run bash -c "printf '%s' '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"scripts/collect.sh x --merge\"}}' | '$HOOK'"
   [ "$status" -eq 0 ]
 }
+
+@test "exempts calls targeting the skill repo itself" {
+  run bash -c "printf '%s' '{\"cwd\":\"$(phi_repo_root)\",\"tool_input\":{\"file_path\":\"scripts/delegate.sh\",\"content\":\".phi-worktrees\"}}' | '$HOOK'"
+  [ "$status" -eq 0 ]
+}
