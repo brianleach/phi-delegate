@@ -22,24 +22,22 @@
 # scripts/ directory), NOT in the repo being worked on.
 
 phi_load_env() {
-  local script_dir env_file var
+  local script_dir env_file
+  local prev_key="${PHI_DELEGATE_API_KEY:-}" prev_attested="${PHI_DELEGATE_ZDR_ATTESTED:-}"
+  local prev_model="${PHI_DELEGATE_MODEL:-}" prev_cfg="${PHI_DELEGATE_CONFIG_DIR:-}"
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   env_file="${PHI_DELEGATE_ENV_FILE:-${script_dir}/../.env}"
   if [ -f "$env_file" ]; then
-    # Snapshot anything already set so the environment wins.
-    local -A snapshot=()
-    for var in PHI_DELEGATE_API_KEY PHI_DELEGATE_ZDR_ATTESTED PHI_DELEGATE_MODEL PHI_DELEGATE_CONFIG_DIR; do
-      if [ -n "${!var:-}" ]; then
-        snapshot["$var"]="${!var}"
-      fi
-    done
     set -a
     # shellcheck source=/dev/null
     . "$env_file"
     set +a
-    for var in "${!snapshot[@]}"; do
-      printf -v "$var" '%s' "${snapshot[$var]}"
-    done
+    # The environment wins over the file. Plain variables, not an
+    # associative array, so this works on macOS bash 3.2.
+    [ -n "$prev_key" ] && PHI_DELEGATE_API_KEY="$prev_key"
+    [ -n "$prev_attested" ] && PHI_DELEGATE_ZDR_ATTESTED="$prev_attested"
+    [ -n "$prev_model" ] && PHI_DELEGATE_MODEL="$prev_model"
+    [ -n "$prev_cfg" ] && PHI_DELEGATE_CONFIG_DIR="$prev_cfg"
   fi
   PHI_DELEGATE_MODEL="${PHI_DELEGATE_MODEL:-claude-opus-5}"
   PHI_DELEGATE_CONFIG_DIR="${PHI_DELEGATE_CONFIG_DIR:-${HOME}/.phi-delegate/claude}"
