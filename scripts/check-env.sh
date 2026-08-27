@@ -84,12 +84,17 @@ fi
 
 if [ "$failures" -eq 0 ]; then
   printf '...   smoke test: claude -p via phi-claude.sh (timeout %ss)\n' "$SMOKE_TIMEOUT_SECS"
-  if smoke_output=$(with_timeout "$SMOKE_TIMEOUT_SECS" "$SCRIPT_DIR/phi-claude.sh" "$model" \
-    -p "Reply with the single word: ready" </dev/null 2>&1) && [ -n "$smoke_output" ]; then
+  # Same hygiene as delegate.sh: a throwaway config dir that is removed
+  # afterwards, and no session persistence, so the smoke test leaves no
+  # session state behind.
+  smoke_cfg="$(mktemp -d "${TMPDIR:-/tmp}/phi-smoke-cfg.XXXXXX")"
+  if smoke_output=$(PHI_DELEGATE_CONFIG_DIR="$smoke_cfg" with_timeout "$SMOKE_TIMEOUT_SECS" "$SCRIPT_DIR/phi-claude.sh" "$model" \
+    -p --no-session-persistence "Reply with the single word: ready" </dev/null 2>&1) && [ -n "$smoke_output" ]; then
     pass "smoke test succeeded ($(printf '%s' "$smoke_output" | tail -c 100 | tr '\n' ' '))"
   else
     fail "smoke test failed" "try: scripts/phi-claude.sh $model -p 'say hello'. Output: $(printf '%s' "$smoke_output" | tail -c 300 | tr '\n' ' ')"
   fi
+  rm -rf "$smoke_cfg"
 else
   echo "skip  smoke test (fix the failures above first)"
 fi
