@@ -214,7 +214,11 @@ fi
 
 denial_count="$(grep -cE "Claude requested permissions|Permission to use .* has been denied|was blocked by a deny rule|doesn.t want to proceed with this tool use" "$log_file" 2>/dev/null || true)"
 if [ "${denial_count:-0}" -gt 0 ]; then
-  echo "WARNING: $denial_count permission denial(s) occurred during the delegate run." >&2
+  # Name the denied tools (never their arguments or output) so the
+  # orchestrator can fix the spec or the allowlist instead of guessing.
+  denied_tools="$(grep -oE "Permission to use [A-Za-z_]+" "$log_file" 2>/dev/null \
+    | awk '{print $4}' | sort | uniq -c | awk '{printf "%s x%s ", $2, $1}' || true)"
+  echo "WARNING: $denial_count permission denial(s) occurred during the delegate run.${denied_tools:+ Tools: $denied_tools}" >&2
 fi
 
 # Pull the handoff out of the tree and quarantine-scan it before anything

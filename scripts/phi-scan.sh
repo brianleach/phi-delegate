@@ -18,6 +18,19 @@ tmp="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 cat "$input" >"$tmp"
 
+# Infrastructure identifiers are not PHI but carry long digit runs that the
+# long-digit-run rule would otherwise flag: an AWS account id inside an ARN
+# or an ECR image URI. Mask those token shapes before scanning so an ops
+# handoff that names an ECS task or an image can still be shown. A bare
+# 9+ digit number outside those shapes is still flagged.
+masked="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
+trap 'rm -f "$tmp" "$masked"' EXIT
+sed -E \
+  -e 's#arn:aws:[A-Za-z0-9:/_.-]+#[ARN]#g' \
+  -e 's#(^|[^0-9])[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com#\1[ECR]#g' \
+  "$tmp" >"$masked"
+mv "$masked" "$tmp"
+
 total=0
 report() {
   local label="$1" pattern="$2" flags="${3:-}" n
