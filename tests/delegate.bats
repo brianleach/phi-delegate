@@ -38,7 +38,7 @@ setup() {
   PHI_DELEGATE_KEEP_LOG=1 run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md"
   [ "$status" -eq 0 ]
   [ -f .phi-worktrees/01-task.log ]
-  [ "$(stat -f '%Lp' .phi-worktrees/01-task.log 2>/dev/null || stat -c '%a' .phi-worktrees/01-task.log)" = "600" ]
+  [ "$(stat -c '%a' .phi-worktrees/01-task.log 2>/dev/null || stat -f '%Lp' .phi-worktrees/01-task.log)" = "600" ]
 }
 
 @test "collect shows stat and merges after review" {
