@@ -148,7 +148,7 @@ else
   log_file="$(mktemp "${TMPDIR:-/tmp}/phi-delegate-log.XXXXXX")"
 fi
 run_config_dir="$PHI_DELEGATE_CONFIG_DIR/run-$name-$$"
-# shellcheck disable=SC2329  # invoked via trap
+# shellcheck disable=SC2329,SC2317  # invoked via trap; code differs by shellcheck version
 cleanup() {
   rm -rf "$run_config_dir"
   if [ "$keep_log" != "1" ]; then secure_rm "$log_file"; fi
