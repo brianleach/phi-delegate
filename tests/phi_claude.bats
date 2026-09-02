@@ -49,3 +49,14 @@ setup() {
   [ -f "$PHI_DELEGATE_CONFIG_DIR/.claude.json" ]
   ! grep -q 'test-key-not-real' "$FAKE_CLAUDE_ARGS"
 }
+
+@test "a positional prompt after a variadic flag is followed by a wrapper flag" {
+  # --allowedTools is variadic; if the wrapper's flags came first, the
+  # prompt would be swallowed as a tool name. The prompt must be followed
+  # by --strict-mcp-config so the variadic list is terminated.
+  run "$WRAP" claude-opus-5 --permission-mode default --allowedTools Bash "do the task"
+  [ "$status" -eq 0 ]
+  after_prompt="$(grep -A1 -x -- 'do the task' "$FAKE_CLAUDE_ARGS" | tail -1)"
+  [ "$after_prompt" = "--strict-mcp-config" ]
+  grep -qx -- 'WebSearch,WebFetch' "$FAKE_CLAUDE_ARGS"
+}

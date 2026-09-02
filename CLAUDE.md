@@ -22,6 +22,9 @@ names.
   - `delegate.sh` - run a task spec in an isolated worktree; prints only
     diff --stat, scan results, and a clean handoff
   - `collect.sh` - stat/scan/merge/reject a finished worktree
+  - `interactive.sh` - print (or with --run, exec) the command for an
+    interactive ZDR session on a spec, for a human who wants permission
+    prompts; the handoff is not scanned or collected
   - `phi-scan.sh` - heuristic PHI tripwire; reports counts, never text
   - `guard-hook.sh` - PreToolUse hook for the orchestrator that blocks
     access to `.phi-worktrees/`, handoff copies, and `--full-diff`

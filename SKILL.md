@@ -88,6 +88,30 @@ Prefer `--pr` when the repo has a GitHub origin and `gh` is available.
 The PR body carries only the scanned handoff and the diff scan, never
 the spec or the transcript.
 
+### 4b. Interactive mode (human at the keyboard)
+
+When the user wants to approve each command or intervene on failures, or
+when the orchestrator's permission classifier keeps blocking
+`delegate.sh`, do not launch anything. Run
+
+```
+scripts/interactive.sh .phi-tasks/<nn>-<slug>.md [--permission-mode acceptEdits]
+```
+
+which only PRINTS a command, and paste that command back to the user to run
+in their own terminal. It opens the same ZDR-isolated session as
+`delegate.sh` (same key, config dir, no MCP, no web tools) but interactive,
+with the task prompt pre-submitted. Tell the user the three differences:
+
+- It runs in the current checkout, not a worktree. Prefer it for
+  read-only or investigative specs.
+- The handoff lands at `.phi-handoff.md` in the repo and is not scanned or
+  collected. The user scans it with `scripts/phi-scan.sh .phi-handoff.md`,
+  reads it themselves, relays aggregates only, and deletes it. You never
+  read that file (the guard hook blocks it).
+- Prod-exec specs still need the explicit authorization section; the
+  interactive session honors the same guardrails the headless one does.
+
 ### 5. Review
 
 You review with exactly three inputs, all printed by `delegate.sh` or

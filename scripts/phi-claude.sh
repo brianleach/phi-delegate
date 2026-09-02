@@ -75,6 +75,12 @@ settings_json="$(printf '{"env":{"ANTHROPIC_BASE_URL":"%s","ANTHROPIC_MODEL":"%s
 #   - telemetry, error reporting, and nonessential traffic off.
 #   - every alternative credential and provider switch is unset so the only
 #     usable auth is the ZDR key against api.anthropic.com.
+# The caller's "$@" goes BEFORE the wrapper's own flags on purpose.
+# --allowedTools and --disallowedTools are variadic, so a positional prompt
+# placed right after one of them is swallowed as a tool name. With the
+# caller's args first, a trailing prompt is always followed by
+# --strict-mcp-config, which terminates any variadic list the caller left
+# open.
 exec env \
   -u ANTHROPIC_AUTH_TOKEN \
   -u CLAUDE_CODE_OAUTH_TOKEN \
@@ -98,6 +104,6 @@ exec env \
   DISABLE_TELEMETRY=1 \
   DISABLE_ERROR_REPORTING=1 \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-  claude --model "$model" --settings "$settings_json" \
+  claude --model "$model" --settings "$settings_json" "$@" \
   --strict-mcp-config \
-  --disallowedTools "WebSearch,WebFetch" "$@"
+  --disallowedTools "WebSearch,WebFetch"
