@@ -75,6 +75,13 @@ In any repo, tell Claude Code "this touches PHI, delegate it" (or invoke
    `scripts/collect.sh <name> --full-diff` in your own terminal) and
    approve before `scripts/collect.sh <name> --merge`
 
+To watch and approve each step yourself instead, ask for interactive mode.
+Claude runs `scripts/interactive.sh <spec>`, which prints a command; you
+run it in your own terminal and get the same isolated session with
+permission prompts. The handoff lands at `.phi-handoff.md` in the repo,
+unscanned, for you to read (`scripts/phi-scan.sh .phi-handoff.md` first)
+and delete.
+
 Nothing PHI-bearing is left behind: the transcript and the delegate's
 session state are deleted when the run ends, and merge or reject deletes
 the spec and the handoff. Secure deletion is best effort (`shred` or
