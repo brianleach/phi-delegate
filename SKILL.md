@@ -95,7 +95,7 @@ when the orchestrator's permission classifier keeps blocking
 `delegate.sh`, do not launch anything. Run
 
 ```
-scripts/interactive.sh .phi-tasks/<nn>-<slug>.md [--permission-mode acceptEdits]
+scripts/interactive.sh .phi-tasks/<nn>-<slug>.md [--permission-mode acceptEdits|auto]
 ```
 
 which only PRINTS a command, and paste that command back to the user to run

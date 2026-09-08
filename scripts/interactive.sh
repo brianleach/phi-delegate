@@ -27,7 +27,8 @@ Differences from delegate.sh, which the human must know:
     first with: scripts/phi-scan.sh .phi-handoff.md
   - permission mode defaults to "default" (every tool call prompts). Pass
     --permission-mode acceptEdits to match the headless run and still see
-    each command scroll by
+    each command scroll by, or --permission-mode auto to let the classifier
+    approve routine commands. bypassPermissions is refused
   - session state persists under the delegate CLAUDE_CONFIG_DIR until the
     human deletes it; delegate.sh deletes its per-run config dir itself
 
@@ -79,9 +80,9 @@ if [ ! -f "$spec_file" ]; then
   exit 1
 fi
 case "$permission_mode" in
-  default | acceptEdits | plan) ;;
+  default | acceptEdits | auto | plan) ;;
   *)
-    echo "error: permission mode must be default, acceptEdits, or plan (never bypassPermissions)" >&2
+    echo "error: permission mode must be default, acceptEdits, auto, or plan (never bypassPermissions)" >&2
     exit 1
     ;;
 esac
@@ -114,15 +115,18 @@ wrapper="$SCRIPT_DIR/phi-claude.sh"
 
 if [ "$run_now" = "1" ]; then
   cd "$repo_root"
-  exec "$wrapper" "$model" --permission-mode "$permission_mode" --allowedTools Bash "$prompt"
+  # The prompt must come BEFORE --allowedTools: that flag is variadic, so a
+  # trailing positional prompt is swallowed as a tool name and the session
+  # opens with an empty input box.
+  exec "$wrapper" "$model" "$prompt" --permission-mode "$permission_mode" --allowedTools Bash
 fi
 
 cat <<EOF
 Run this in YOUR OWN terminal (not from the orchestrator session):
 
 cd '$repo_root' && bash '$wrapper' $model \\
-  --permission-mode $permission_mode --allowedTools Bash \\
-  '$prompt'
+  '$prompt' \\
+  --permission-mode $permission_mode --allowedTools Bash
 
 Or, equivalently:
 
