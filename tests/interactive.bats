@@ -34,7 +34,7 @@ setup() {
   [[ "$output" == *"never bypassPermissions"* ]]
 }
 
-@test "--run launches the wrapper with the prompt last and a terminating flag after it" {
+@test "--run launches the wrapper with the prompt BEFORE --allowedTools" {
   run "$INTERACTIVE" .phi-tasks/01-thing.md --permission-mode acceptEdits --run
   [ "$status" -eq 0 ]
   grep -qx -- 'acceptEdits' "$FAKE_CLAUDE_ARGS"
@@ -42,6 +42,10 @@ setup() {
   grep -q -- 'Read the file .phi-tasks/01-thing.md' "$FAKE_CLAUDE_ARGS"
   # -p must NOT be present: this is the interactive session
   ! grep -qx -- '-p' "$FAKE_CLAUDE_ARGS"
-  # the wrapper's own flags follow the prompt so --allowedTools cannot eat it
-  grep -qx -- '--strict-mcp-config' "$FAKE_CLAUDE_ARGS"
+  # --allowedTools is variadic: a prompt placed after it is swallowed as a tool
+  # name and the session opens with an empty input box (seen in practice; a
+  # trailing wrapper flag does NOT terminate the list). Assert the order.
+  prompt_line=$(grep -n -- 'Read the file .phi-tasks/01-thing.md' "$FAKE_CLAUDE_ARGS" | head -1 | cut -d: -f1)
+  allowed_line=$(grep -nx -- '--allowedTools' "$FAKE_CLAUDE_ARGS" | head -1 | cut -d: -f1)
+  [ "$prompt_line" -lt "$allowed_line" ]
 }
