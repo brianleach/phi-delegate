@@ -92,8 +92,11 @@ never deleted, do leave residue. `scripts/cleanup.sh` finds it (stray
 `.phi-handoff*.md`, `.phi-tasks/`, `.phi-worktrees/`, `phi/*` branches,
 delegate session state) and lists it by name; `--apply` deletes it,
 `--all` sweeps every repo under `~/code`, `--branches` also drops merged
-`phi/*` branches, and `--sessions` empties the delegate config dir.
-Unmerged branches are never deleted.
+`phi/*` branches, and `--sessions` empties the delegate config dir. A
+branch counts as merged when it is an ancestor of HEAD or when `gh`
+reports a merged PR for it, so squash-merged delegate PRs qualify.
+Unmerged branches, and branches whose PR is open or was closed without
+merging, are never deleted.
 
 ## Compliance notes
 

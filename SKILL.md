@@ -164,8 +164,9 @@ scripts/cleanup.sh --apply    # delete files, worktrees, and run records
 ```
 
 Add `--all` to sweep every repo under `~/code` (or `--all <root>`),
-`--branches` to also drop `phi/*` branches already merged into HEAD, and
-`--sessions` to empty the delegate config dir. Unmerged `phi/*` branches
+`--branches` to also drop `phi/*` branches that are merged (an ancestor
+of HEAD, or a PR that GitHub reports as merged, which covers squash
+merges), and `--sessions` to empty the delegate config dir. Unmerged `phi/*` branches
 are always kept because they may hold the only copy of a delegate's
 work; reject them with `collect.sh <name> --reject` instead. Show the
 user the dry run and get a yes before `--apply`. The script prints file
