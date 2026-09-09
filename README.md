@@ -87,6 +87,14 @@ session state are deleted when the run ends, and merge or reject deletes
 the spec and the handoff. Secure deletion is best effort (`shred` or
 `rm -P`); on APFS and SSDs full-disk encryption is the real control.
 
+Runs that end abnormally, and interactive sessions whose handoff was
+never deleted, do leave residue. `scripts/cleanup.sh` finds it (stray
+`.phi-handoff*.md`, `.phi-tasks/`, `.phi-worktrees/`, `phi/*` branches,
+delegate session state) and lists it by name; `--apply` deletes it,
+`--all` sweeps every repo under `~/code`, `--branches` also drops merged
+`phi/*` branches, and `--sessions` empties the delegate config dir.
+Unmerged branches are never deleted.
+
 ## Compliance notes
 
 This tool reduces the surface through which PHI can reach an uncovered
