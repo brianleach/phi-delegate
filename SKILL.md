@@ -149,3 +149,27 @@ records; the transcript and the delegate's session state were already
 deleted when the run ended. Do not keep your own copies of a spec's
 Private input section. If the user set `PHI_DELEGATE_KEEP_LOG=1` for
 debugging, remind them the kept log is theirs to delete.
+
+### 7. Sweep leftovers
+
+Interactive runs, killed delegates, and specs that were never collected
+leave residue behind: `.phi-handoff*.md` at the repo root, `.phi-tasks/`,
+`.phi-worktrees/`, `phi/*` branches, and session state under the
+delegate config dir. When the user asks to clean up past PHI work, or
+`git status` shows untracked `.phi-*` files, run
+
+```
+scripts/cleanup.sh            # dry run: names and counts only
+scripts/cleanup.sh --apply    # delete files, worktrees, and run records
+```
+
+Add `--all` to sweep every repo under `~/code` (or `--all <root>`),
+`--branches` to also drop `phi/*` branches that are merged (an ancestor
+of HEAD, or a PR that GitHub reports as merged, which covers squash
+merges), and `--sessions` to empty the delegate config dir. Unmerged `phi/*` branches
+are always kept because they may hold the only copy of a delegate's
+work; reject them with `collect.sh <name> --reject` instead. Show the
+user the dry run and get a yes before `--apply`. The script prints file
+names only, never contents, so it is safe to run from this session, and
+it is the only sanctioned way to touch those paths (rule 1 still holds:
+never inspect them yourself).

@@ -25,6 +25,9 @@ names.
   - `interactive.sh` - print (or with --run, exec) the command for an
     interactive ZDR session on a spec, for a human who wants permission
     prompts; the handoff is not scanned or collected
+  - `cleanup.sh` - sweep leftover handoffs, specs, worktrees, run
+    records, merged phi/* branches, and session state; dry run by
+    default, names and counts only
   - `phi-scan.sh` - heuristic PHI tripwire; reports counts, never text
   - `guard-hook.sh` - PreToolUse hook for the orchestrator that blocks
     access to `.phi-worktrees/`, handoff copies, and `--full-diff`
