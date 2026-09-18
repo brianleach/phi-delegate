@@ -14,6 +14,8 @@ ANTHROPIC_URL="https://api.anthropic.com"
 if [ $# -lt 1 ]; then
   echo "usage: phi-claude.sh <model> [claude args...]" >&2
   echo "  <model> is an Anthropic model ID, e.g. claude-opus-5" >&2
+  echo "  put a positional prompt BEFORE --allowedTools, --disallowedTools, --tools," >&2
+  echo "  and --add-dir: those flags are variadic and swallow whatever follows them" >&2
   exit 1
 fi
 model="$1"
@@ -75,12 +77,44 @@ settings_json="$(printf '{"env":{"ANTHROPIC_BASE_URL":"%s","ANTHROPIC_MODEL":"%s
 #   - telemetry, error reporting, and nonessential traffic off.
 #   - every alternative credential and provider switch is unset so the only
 #     usable auth is the ZDR key against api.anthropic.com.
-# The caller's "$@" goes BEFORE the wrapper's own flags on purpose.
-# --allowedTools and --disallowedTools are variadic, so a positional prompt
-# placed right after one of them is swallowed as a tool name. With the
-# caller's args first, a trailing prompt is always followed by
-# --strict-mcp-config, which terminates any variadic list the caller left
-# open.
+# --allowedTools, --disallowedTools, --tools, and --add-dir are variadic:
+# every positional after one of them is consumed as a list item until the
+# next flag. A later flag ends the list but does not give back a positional
+# the list already took, so a prompt placed right after such a flag is
+# lost no matter what follows it (headless -p then waits on stdin, an
+# interactive session opens with an empty input box). Two consequences:
+#   - The caller's "$@" goes BEFORE the wrapper's own flags, because the
+#     wrapper ends with --disallowedTools and a prompt appended after that
+#     would be swallowed as a tool name.
+#   - Callers must still put their prompt before any variadic flag of
+#     their own. The wrapper cannot fix that ordering, so it refuses the
+#     ambiguous case instead of letting the run silently lose its prompt.
+open_list=""
+last=""
+for arg in "$@"; do
+  last="$arg"
+  case "$arg" in
+    --allowedTools|--allowed-tools|--disallowedTools|--disallowed-tools|--tools|--add-dir)
+      open_list=1 ;;
+    -*)
+      open_list="" ;;
+  esac
+done
+if [ -n "$open_list" ]; then
+  # A tool pattern (Bash, Read, Bash(git:*), mcp__a__b, comma lists of
+  # those) or a directory path is fine as the last list item. Anything
+  # with whitespace outside a pattern's parentheses is a prompt.
+  case "$last" in
+    /*|./*|../*|~*) : ;;
+    *[[:space:]]*)
+      if ! printf '%s' "$last" | grep -Eq '^[A-Za-z0-9_-]+(\([^)]*\))?(,[A-Za-z0-9_-]+(\([^)]*\))?)*$'; then
+        echo "error: the last argument looks like a prompt but follows a variadic flag, so claude would read it" >&2
+        echo "       as a tool name or directory. Put the prompt before --allowedTools/--disallowedTools/--tools/--add-dir." >&2
+        exit 1
+      fi
+      ;;
+  esac
+fi
 exec env \
   -u ANTHROPIC_AUTH_TOKEN \
   -u CLAUDE_CODE_OAUTH_TOKEN \

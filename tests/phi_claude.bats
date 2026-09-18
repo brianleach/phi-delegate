@@ -50,13 +50,41 @@ setup() {
   ! grep -q 'test-key-not-real' "$FAKE_CLAUDE_ARGS"
 }
 
-@test "a positional prompt after a variadic flag is followed by a wrapper flag" {
-  # --allowedTools is variadic; if the wrapper's flags came first, the
-  # prompt would be swallowed as a tool name. The prompt must be followed
-  # by --strict-mcp-config so the variadic list is terminated.
-  run "$WRAP" claude-opus-5 --permission-mode default --allowedTools Bash "do the task"
+@test "caller args come before the wrapper's own variadic --disallowedTools" {
+  # The wrapper ends with --disallowedTools, which is variadic. If the
+  # wrapper's flags came first, a caller's trailing prompt would be
+  # consumed as a disallowed tool name.
+  run "$WRAP" claude-opus-5 -p --no-session-persistence "do the task"
   [ "$status" -eq 0 ]
-  after_prompt="$(grep -A1 -x -- 'do the task' "$FAKE_CLAUDE_ARGS" | tail -1)"
-  [ "$after_prompt" = "--strict-mcp-config" ]
+  prompt_line=$(grep -nx -- 'do the task' "$FAKE_CLAUDE_ARGS" | head -1 | cut -d: -f1)
+  disallowed_line=$(grep -nx -- '--disallowedTools' "$FAKE_CLAUDE_ARGS" | head -1 | cut -d: -f1)
+  [ "$prompt_line" -lt "$disallowed_line" ]
   grep -qx -- 'WebSearch,WebFetch' "$FAKE_CLAUDE_ARGS"
+}
+
+@test "refuses a prompt left inside an open variadic list" {
+  # A flag after the prompt ends the list but does not give back the
+  # positional the list already consumed, so this must fail loudly rather
+  # than start a run with no prompt.
+  run "$WRAP" claude-opus-5 --permission-mode default --allowedTools Bash "do the task"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"looks like a prompt but follows a variadic flag"* ]]
+  [ ! -f "$FAKE_CLAUDE_ARGS" ]
+}
+
+@test "accepts a prompt placed before a variadic flag" {
+  run "$WRAP" claude-opus-5 "do the task" --permission-mode default --allowedTools Bash
+  [ "$status" -eq 0 ]
+  prompt_line=$(grep -nx -- 'do the task' "$FAKE_CLAUDE_ARGS" | head -1 | cut -d: -f1)
+  allowed_line=$(grep -nx -- '--allowedTools' "$FAKE_CLAUDE_ARGS" | head -1 | cut -d: -f1)
+  [ "$prompt_line" -lt "$allowed_line" ]
+}
+
+@test "accepts a spaced tool pattern or a directory as the last list item" {
+  run "$WRAP" claude-opus-5 -p "do the task" --allowedTools "Bash(npm run test:*)"
+  [ "$status" -eq 0 ]
+  grep -qxF -- 'Bash(npm run test:*)' "$FAKE_CLAUDE_ARGS"
+  run "$WRAP" claude-opus-5 -p "do the task" --add-dir "/tmp/with space"
+  [ "$status" -eq 0 ]
+  grep -qx -- '/tmp/with space' "$FAKE_CLAUDE_ARGS"
 }
