@@ -1,0 +1,17 @@
+commit 4c1e9a7b2d0f3e5a6b7c8d9e0f1a2b3c4d5e6f7a
+Author: Sample Dev <sample.dev@example.invalid>
+Date:   Mon Sep 21 14:02:11 2026 -0500
+
+    Retry the upload once on a timeout
+
+    Signed-off-by: Sample Dev <sample.dev@example.invalid>
+    Co-Authored-By: Helper Bot <helper.bot@example.invalid>
+
+diff --git a/src/upload.sh b/src/upload.sh
+index 3e4fa1c..9b0d2e7 100644
+--- a/src/upload.sh
++++ b/src/upload.sh
+@@ -12,3 +12,4 @@ upload() {
+   curl -sS --fail "$url" -T "$file"
++  curl -sS --fail --retry 1 "$url" -T "$file"
+ }

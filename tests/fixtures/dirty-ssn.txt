@@ -1,0 +1,1 @@
+Applicant record (synthetic): ssn 987-65-4320, status pending.

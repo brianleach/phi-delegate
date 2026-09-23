@@ -32,6 +32,16 @@ keywords, addresses, long digit runs). It reports counts only. It is not a
 substitute for the delegate following its handoff instructions or for the
 human reviewing the full diff.
 
+Precision options: `--profile diff` drops git metadata lines (`diff --git`,
+`index`, file headers, hunk headers, `Author:`, `Signed-off-by:`,
+`Co-Authored-By:`) so author emails stop counting; `--only` and `--skip`
+take class names (comma separated, repeatable); `--allow <file>` reads an
+allowlist, conventionally `.phi-allow`, one regex per line, applied to
+matched lines. The allowlist is never loaded implicitly. The synthetic
+corpus in `tests/fixtures/` measures it: 5 clean fixtures pass, 5 dirty
+fixtures flagged (`bats tests/phi_scan_fixtures.bats`). Prose about the
+scanner itself still trips the keyword classes unless they are skipped.
+
 ## Requirements
 
 - Claude Code CLI 2.1 or newer

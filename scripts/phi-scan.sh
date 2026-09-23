@@ -5,13 +5,50 @@
 # 1 when anything matched. This is a tripwire, not a guarantee: the
 # orchestrator-side rules in SKILL.md are the primary control.
 #
-# usage: phi-scan.sh [file]        (reads stdin when no file is given)
+# usage: phi-scan.sh [--profile default|diff] [--only CLASS[,CLASS]]
+#                    [--skip CLASS[,CLASS]] [--allow FILE] [file]
+#   (reads stdin when no file is given)
+#
+#   --profile diff  drop git diff and log metadata (diff --git, index,
+#                   ---/+++ file headers, @@ hunk headers, Author:,
+#                   Signed-off-by:, Co-Authored-By:) before matching, so
+#                   author emails are not counted. Content lines still scan.
+#   --only / --skip limit the classes checked; repeatable. Unknown class: exit 2.
+#   --allow FILE    allowlist, one extended regex per line (conventionally
+#                   .phi-allow); a matched line that also matches an allowlist
+#                   entry is not counted. Blank and # lines are ignored. Never
+#                   loaded implicitly, so a tree cannot allowlist itself.
 set -euo pipefail
 
-input="${1:-/dev/stdin}"
+CLASSES=" ssn-shaped phone-shaped email-address date-shaped iso-date dob-keyword"
+CLASSES+=" identifier-keyword patient-name-keyword clinical-keyword street-address"
+CLASSES+=" long-digit-run "
+
+die() { echo "error: $*" >&2; exit 2; }
+check_classes() {
+  local c
+  [ -n "${1//[, ]/}" ] || die "empty class list"
+  for c in ${1//,/ }; do
+    case "$CLASSES" in *" $c "*) ;; *) die "unknown class: $c" ;; esac
+  done
+}
+
+profile=default only="" skip="" allow="" input=/dev/stdin
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --profile) [ $# -ge 2 ] || die "--profile needs a value"; profile="$2"; shift 2 ;;
+    --only) [ $# -ge 2 ] || die "--only needs a class"; check_classes "$2"; only="$only,$2"; shift 2 ;;
+    --skip) [ $# -ge 2 ] || die "--skip needs a class"; check_classes "$2"; skip="$skip,$2"; shift 2 ;;
+    --allow) [ $# -ge 2 ] || die "--allow needs a file"; allow="$2"; shift 2 ;;
+    -*) die "unknown option: $1" ;;
+    *) input="$1"; shift ;;
+  esac
+done
+case "$profile" in default|diff) ;; *) die "unknown profile: $profile" ;; esac
+[ -z "$allow" ] || [ -f "$allow" ] || die "no such allowlist: $allow"
+
 if [ "$input" != "/dev/stdin" ] && [ ! -f "$input" ]; then
-  echo "error: no such file: $input" >&2
-  exit 2
+  die "no such file: $input"
 fi
 
 tmp="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
@@ -31,11 +68,30 @@ sed -E \
   "$tmp" >"$masked"
 mv "$masked" "$tmp"
 
+if [ "$profile" = diff ]; then
+  grep -v -E -i -e '^(diff --git |index [0-9a-f]+\.\.[0-9a-f]+|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@ )' \
+    -e '^[[:space:]]*(Author|Signed-off-by|Co-Authored-By):' "$tmp" >"$masked" || true
+  mv "$masked" "$tmp"
+fi
+
+allow_re="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
+trap 'rm -f "$tmp" "$masked" "$allow_re"' EXIT
+if [ -n "$allow" ]; then
+  grep -v -E '^[[:space:]]*(#|$)' "$allow" >"$allow_re" || true
+fi
+
 total=0
 report() {
   local label="$1" pattern="$2" flags="${3:-}" n
+  if [ -n "$only" ] && [[ ",$only," != *",$label,"* ]]; then return 0; fi
+  if [[ ",$skip," == *",$label,"* ]]; then return 0; fi
+  # Matched lines stay inside this pipeline and are only counted.
   # shellcheck disable=SC2086
-  n="$(grep -c $flags -E -- "$pattern" "$tmp" || true)"
+  if [ -s "$allow_re" ]; then
+    n="$({ grep $flags -E -- "$pattern" "$tmp" || true; } | { grep -c -v -E -f "$allow_re" || true; })"
+  else
+    n="$(grep -c $flags -E -- "$pattern" "$tmp" || true)"
+  fi
   n="${n:-0}"
   if [ "$n" -gt 0 ]; then
     printf '  %-28s %s line(s)\n' "$label" "$n"

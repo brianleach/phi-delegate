@@ -1,0 +1,7 @@
+diff --git a/seed/contacts.csv b/seed/contacts.csv
+index 1a2b3c4..5d6e7f8 100644
+--- a/seed/contacts.csv
++++ b/seed/contacts.csv
+@@ -1,2 +1,3 @@
+ id,contact
++7,synthetic.person@example.invalid

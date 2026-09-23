@@ -1,0 +1,8 @@
+{
+  "service": "sample-api",
+  "port": 8080,
+  "timeout_ms": 30000,
+  "retries": 3,
+  "log_level": "info",
+  "features": { "cache": true, "batch_size": 250 }
+}
