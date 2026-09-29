@@ -136,7 +136,7 @@ echo "==> $branch vs $base_branch"
 echo
 git diff --stat "$base_branch...$branch"
 echo
-diff_scan="$(git diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" 2>&1 || true)"
+diff_scan="$(git diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" --profile diff 2>&1 || true)"
 echo "==> diff scan: $diff_scan"
 echo
 if [ -f "$handoff_file" ]; then
