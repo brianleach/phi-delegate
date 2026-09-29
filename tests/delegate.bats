@@ -65,6 +65,48 @@ setup() {
   [ ! -f "${BATS_TEST_TMPDIR}/01-task.md" ]
 }
 
+# Run delegate.sh and collect.sh from a copy of scripts/ whose phi-scan.sh
+# is a spy: it logs its argv, one call per line, then runs the real
+# scanner. Lets a test pin which scans use which profile.
+install_scan_spy() {
+  SPY_DIR="${BATS_TEST_TMPDIR}/spy-scripts"
+  mkdir -p "$SPY_DIR"
+  cp "$ROOT"/scripts/*.sh "$SPY_DIR/"
+  mv "$SPY_DIR/phi-scan.sh" "$SPY_DIR/phi-scan.real.sh"
+  export SCAN_SPY_LOG="${BATS_TEST_TMPDIR}/scan-calls.log"
+  cat >"$SPY_DIR/phi-scan.sh" <<'SPY'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"$SCAN_SPY_LOG"
+exec "$(dirname "$0")/phi-scan.real.sh" "$@"
+SPY
+  chmod +x "$SPY_DIR/phi-scan.sh"
+}
+
+# The diff is piped in, so its call is exactly the flags; the handoff call
+# names the handoff file and must stay on the default profile.
+assert_scan_profiles() {
+  grep -qx -- '--profile diff' "$SCAN_SPY_LOG"
+  grep -q 'handoff\.md$' "$SCAN_SPY_LOG"
+  [ -z "$(grep -- 'handoff.*--profile\|--profile.*handoff' "$SCAN_SPY_LOG")" ]
+}
+
+@test "delegate scans the diff with the diff profile and the handoff without it" {
+  install_scan_spy
+  run "$SPY_DIR/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md"
+  [ "$status" -eq 0 ]
+  assert_scan_profiles
+}
+
+@test "collect scans the diff with the diff profile and the handoff without it" {
+  install_scan_spy
+  "$SPY_DIR/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md" >/dev/null
+  : >"$SCAN_SPY_LOG"
+  run "$SPY_DIR/collect.sh" 01-task
+  [ "$status" -eq 0 ]
+  assert_scan_profiles
+}
+
 @test "refuses on detached HEAD" {
   git checkout -q --detach
   run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md"

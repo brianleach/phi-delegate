@@ -1,0 +1,13 @@
+commit 7a2b9c4d1e0f3a5b6c7d8e9f0a1b2c3d4e5f6a7b
+Author: Delegate Bot <delegate.bot@example.invalid>
+Date:   Tue Sep 22 09:15:40 2026 -0500
+
+    phi-delegate: 01-task (auto-commit of delegated work)
+
+diff --git a/seed.txt b/seed.txt
+index 8f1c2d3..4b5e6a7 100644
+--- a/seed.txt
++++ b/seed.txt
+@@ -1 +1,2 @@
+ fixture seed
++delegate wrote this

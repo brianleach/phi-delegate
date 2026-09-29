@@ -43,6 +43,24 @@ expect_verdict() {
   expect_verdict flagged clean-commit.diff
   [[ "$output" == *"email-address"* ]]
 }
+@test "dirty: paren area code with a space is flagged as phone-shaped" {
+  expect_verdict flagged dirty-phone-paren.txt --only phone-shaped
+  [[ "$output" == *"phone-shaped"* ]]
+  [[ "$output" != *"0142"* ]]
+}
+@test "phone-shaped covers every separator form" {
+  local form
+  for form in '555-555-0142' '555.555.0142' '(555)555-0142' '(555) 555-0142'; do
+    run "$SCAN" --only phone-shaped <<<"call $form today"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"phone-shaped"* ]]
+  done
+}
+@test "delegate diff with an author email is clean only under diff profile" {
+  expect_verdict clean clean-delegate.diff --profile diff
+  expect_verdict flagged clean-delegate.diff
+  [[ "$output" == *"email-address"* ]]
+}
 @test "default flags still catch the readme keywords" { expect_verdict flagged clean-readme.md; }
 @test "matched text never appears in output" {
   run "$SCAN" "$FX/dirty-ssn.txt"

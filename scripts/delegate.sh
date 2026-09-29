@@ -244,7 +244,7 @@ fi
 
 # The committed diff is also scanned so the reviewer knows whether the
 # branch itself carries PHI-shaped content before anyone opens it.
-diff_scan="$(git -C "$wt_dir" diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" 2>&1 || true)"
+diff_scan="$(git -C "$wt_dir" diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" --profile diff 2>&1 || true)"
 
 if [ "$pr_requested" -eq 1 ]; then
   if [ "$(git -C "$wt_dir" rev-list --count "$base_branch..$branch")" -eq 0 ]; then
