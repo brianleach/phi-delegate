@@ -1,0 +1,9 @@
+diff --git a/docs/CONTACTS.md b/docs/CONTACTS.md
+index 2c3d4e5..6f7a8b9 100644
+--- a/docs/CONTACTS.md
++++ b/docs/CONTACTS.md
+@@ -1,3 +1,3 @@
+ # Contacts
+ Author: someone@example.com
+-Reviewed: pending
++Reviewed: done

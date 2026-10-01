@@ -1,0 +1,17 @@
+commit 0587d0e771161526b50a3e4aef86c29e826264fe
+Author: Sample Dev <sample.dev@example.invalid>
+Date:   Mon Sep 28 10:00:00 2026 -0500
+
+    Raise the retry count
+    
+    Signed-off-by: Sample Dev <sample.dev@example.invalid>
+    Co-Authored-By: Helper Bot <helper.bot@example.invalid>
+
+diff --git a/config.yml b/config.yml
+index c802104..f59b320 100644
+--- a/config.yml
++++ b/config.yml
+@@ -1 +1,2 @@
+-retries: 1
++retries: 2
++timeout_s: 30

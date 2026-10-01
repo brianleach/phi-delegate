@@ -5,14 +5,21 @@
 # 1 when anything matched. This is a tripwire, not a guarantee: the
 # orchestrator-side rules in SKILL.md are the primary control.
 #
-# usage: phi-scan.sh [--profile default|diff] [--only CLASS[,CLASS]]
+# usage: phi-scan.sh [--profile default|diff|prose] [--only CLASS[,CLASS]]
 #                    [--skip CLASS[,CLASS]] [--allow FILE] [file]
 #   (reads stdin when no file is given)
 #
 #   --profile diff  drop git diff and log metadata (diff --git, index,
-#                   ---/+++ file headers, @@ hunk headers, Author:,
-#                   Signed-off-by:, Co-Authored-By:) before matching, so
-#                   author emails are not counted. Content lines still scan.
+#                   ---/+++ file headers, @@ hunk headers) before matching,
+#                   plus Author:, Signed-off-by:, Co-Authored-By: lines where
+#                   git puts them (column 0 headers, 4-space indented message
+#                   trailers), so author emails are not counted. Diff content
+#                   lines (+, -, or one-space context) always scan, even when
+#                   their content looks like metadata.
+#   --profile prose for a human scanning documentation that talks about PHI:
+#                   skips dob-keyword, identifier-keyword, clinical-keyword.
+#                   Every other class still scans. Not used by delegate.sh or
+#                   collect.sh, whose handoff scans stay on the default.
 #   --only / --skip limit the classes checked; repeatable. Unknown class: exit 2.
 #   --allow FILE    allowlist, one extended regex per line (conventionally
 #                   .phi-allow); a matched line that also matches an allowlist
@@ -44,7 +51,11 @@ while [ $# -gt 0 ]; do
     *) input="$1"; shift ;;
   esac
 done
-case "$profile" in default|diff) ;; *) die "unknown profile: $profile" ;; esac
+case "$profile" in
+  default|diff) ;;
+  prose) skip="$skip,dob-keyword,identifier-keyword,clinical-keyword" ;;
+  *) die "unknown profile: $profile" ;;
+esac
 [ -z "$allow" ] || [ -f "$allow" ] || die "no such allowlist: $allow"
 
 if [ "$input" != "/dev/stdin" ] && [ ! -f "$input" ]; then
@@ -69,8 +80,12 @@ sed -E \
 mv "$masked" "$tmp"
 
 if [ "$profile" = diff ]; then
+  # Author/trailer lines are dropped only at column 0 (git log -p commit
+  # headers) or at exactly four spaces (git log -p message trailers). A diff
+  # content line starts with +, -, or one space and is kept even when its
+  # content looks like metadata: a dropped line is an unscanned line.
   grep -v -E -i -e '^(diff --git |index [0-9a-f]+\.\.[0-9a-f]+|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@ )' \
-    -e '^[[:space:]]*(Author|Signed-off-by|Co-Authored-By):' "$tmp" >"$masked" || true
+    -e '^( {4})?(Author|Signed-off-by|Co-Authored-By):' "$tmp" >"$masked" || true
   mv "$masked" "$tmp"
 fi
 
