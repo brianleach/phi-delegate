@@ -61,6 +61,49 @@ expect_verdict() {
   expect_verdict flagged clean-delegate.diff
   [[ "$output" == *"email-address"* ]]
 }
+@test "prose profile: readme passes with no --skip flags" {
+  expect_verdict clean clean-readme.md --profile prose
+}
+@test "prose profile: ssn and phone in prose are still flagged" {
+  expect_verdict flagged dirty-prose-ssn.md --profile prose
+  [[ "$output" == *"ssn-shaped"* ]]
+  [[ "$output" == *"phone-shaped"* ]]
+  [[ "$output" != *"clinical-keyword"* ]]
+  [[ "$output" != *"identifier-keyword"* ]]
+  [[ "$output" != *"dob-keyword"* ]]
+  [[ "$output" != *"4320"* ]]
+}
+@test "prose profile composes with --only and --skip" {
+  expect_verdict clean dirty-prose-ssn.md --profile prose --only clinical-keyword
+  expect_verdict flagged dirty-prose-ssn.md --profile prose --only ssn-shaped
+  [[ "$output" != *"phone-shaped"* ]]
+  expect_verdict flagged dirty-prose-ssn.md --profile prose --skip ssn-shaped
+  [[ "$output" == *"phone-shaped"* ]]
+  [[ "$output" != *"ssn-shaped"* ]]
+  expect_verdict clean dirty-prose-ssn.md --profile prose --skip ssn-shaped,phone-shaped
+}
+@test "dirty: author-shaped diff context line is scanned under diff profile" {
+  expect_verdict flagged dirty-context-author.diff --profile diff
+  [[ "$output" == *"email-address"* ]]
+}
+@test "diff profile drops author-shaped content only at git metadata positions" {
+  local line
+  for line in ' Author: someone@example.com' '+Author: someone@example.com' \
+    '-Signed-off-by: someone@example.com' ' Co-Authored-By: someone@example.com' \
+    '  Author: someone@example.com'; do
+    run "$SCAN" --profile diff --only email-address <<<"$line"
+    [ "$status" -eq 1 ]
+  done
+  for line in 'Author: someone@example.com' '    Co-Authored-By: someone@example.com'; do
+    run "$SCAN" --profile diff --only email-address <<<"$line"
+    [ "$status" -eq 0 ]
+  done
+}
+@test "clean: real git log -p capture passes under diff profile" {
+  expect_verdict clean clean-log-p.diff --profile diff
+  expect_verdict flagged clean-log-p.diff
+  [[ "$output" == *"email-address"* ]]
+}
 @test "default flags still catch the readme keywords" { expect_verdict flagged clean-readme.md; }
 @test "matched text never appears in output" {
   run "$SCAN" "$FX/dirty-ssn.txt"
