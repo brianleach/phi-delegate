@@ -41,3 +41,13 @@ setup() { HOOK="$(phi_repo_root)/scripts/guard-hook.sh"; }
   run bash -c "printf '%s' '{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\".phi-task.md\"}}' | '$HOOK'"
   [ "$status" -eq 2 ]
 }
+
+@test "a Bash command naming the skill repo's scripts is not exempt" {
+  run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"bash $(phi_repo_root)/scripts/collect.sh x --full-diff\"}}' | '$HOOK'"
+  [ "$status" -eq 2 ]
+}
+
+@test "a file tool naming a path inside the skill repo is still exempt" {
+  run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$(phi_repo_root)/SKILL.md\",\"new_string\":\".phi-worktrees\"}}' | '$HOOK'"
+  [ "$status" -eq 0 ]
+}

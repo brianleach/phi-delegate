@@ -21,9 +21,11 @@ fi
 
 # Developing this skill means editing files that name the quarantined
 # paths. Exempt tool calls that target the skill repo itself, either by
-# running with cwd inside it or by naming its resolved path explicitly.
-# No delegate ever runs there. This is a developer convenience and it
-# assumes an honest orchestrator; it is not a security boundary.
+# running with cwd inside it or, for file tools, by naming its resolved
+# path. A Bash command that names the path is not exempt: every session
+# runs the scripts by their full path. No delegate ever runs there. This is
+# a developer convenience and it assumes an honest orchestrator; it is not
+# a security boundary.
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cwd="$(printf '%s' "$payload" | sed -n 's/.*"cwd":"\([^"]*\)".*/\1/p' | head -n 1)"
 if [ -n "$cwd" ] && [ -d "$cwd" ]; then
@@ -32,7 +34,8 @@ if [ -n "$cwd" ] && [ -d "$cwd" ]; then
     "$repo_dir" | "$repo_dir"/*) exit 0 ;;
   esac
 fi
-if printf '%s' "$payload" | grep -qF -- "$repo_dir"; then
+if ! printf '%s' "$payload" | grep -q '"tool_name" *: *"Bash"' \
+  && printf '%s' "$payload" | grep -qF -- "$repo_dir"; then
   exit 0
 fi
 

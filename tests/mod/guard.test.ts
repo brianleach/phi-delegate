@@ -11,11 +11,16 @@ test('guard reasons match guard-hook.sh, plus sidecars and merges', () => {
   expect(guardReason('{"content":"then collect.sh x --merge"}')).toBeUndefined()
 })
 
-test('the self-repo exemption covers the cwd and the resolved path only', () => {
-  expect(isSelfRepo('/src/phi-delegate', '/src/phi-delegate/scripts', '{}')).toBe(true)
-  expect(isSelfRepo('/src/phi-delegate', '/work', '{"file_path":"/src/phi-delegate/x"}')).toBe(true)
-  expect(isSelfRepo('/src/phi-delegate', '/src/phi-delegate-other', '{}')).toBe(false)
-  expect(isSelfRepo(undefined, '/src/phi-delegate', '{}')).toBe(false)
+test('the self-repo exemption covers the cwd, and file tools naming the path', () => {
+  expect(isSelfRepo('/src/phi-delegate', '/src/phi-delegate/scripts', '{}', true)).toBe(true)
+  expect(isSelfRepo('/src/phi-delegate', '/work', '{"file_path":"/src/phi-delegate/x"}', false)).toBe(true)
+  expect(isSelfRepo('/src/phi-delegate', '/src/phi-delegate-other', '{}', false)).toBe(false)
+  expect(isSelfRepo(undefined, '/src/phi-delegate', '{}', false)).toBe(false)
+})
+
+test('a Bash command running the scripts by full path is not exempt', () => {
+  const payload = '{"command":"bash /src/phi-delegate/scripts/collect.sh x --merge"}'
+  expect(isSelfRepo('/src/phi-delegate', '/work', payload, true)).toBe(false)
 })
 
 test('source patterns skip comments and count the ones that do not compile', () => {

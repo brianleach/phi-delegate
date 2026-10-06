@@ -25,11 +25,18 @@ export const guardReason = (payload: string, bashCommand?: string): string | und
 }
 
 // guard-hook.sh's developer exemption: calls whose session cwd is inside this
-// plugin's own checkout, or that name its resolved path. Not a security
-// boundary; it assumes an honest orchestrator.
-export const isSelfRepo = (repo: string | undefined, cwd: string | undefined, payload: string): boolean =>
+// plugin's own checkout, or file tool calls that name its resolved path. A
+// Bash command naming the path is not exempt: running the scripts by their
+// full path is how every session calls them. Not a security boundary; it
+// assumes an honest orchestrator.
+export const isSelfRepo = (
+  repo: string | undefined,
+  cwd: string | undefined,
+  payload: string,
+  isBash: boolean,
+): boolean =>
   repo !== undefined &&
-  ((cwd !== undefined && (cwd === repo || cwd.startsWith(`${repo}/`))) || payload.includes(repo))
+  ((cwd !== undefined && (cwd === repo || cwd.startsWith(`${repo}/`))) || (!isBash && payload.includes(repo)))
 
 // One regex per line; blank and # lines ignored. A line that does not
 // compile is skipped and reported by count, never by content.
