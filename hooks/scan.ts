@@ -26,27 +26,76 @@ export type Patterns = {
   hunkEnd?: Rule
 }
 
-// grep -E in the C locale reads \s and \S as ASCII whitespace; JavaScript's
-// also take Unicode spaces such as a no-break space. Outside a bracket
-// expression, spell them as grep reads them so both scanners agree.
+// The script runs grep -E in the C locale, which matches bytes. To agree
+// with it, the mod matches the UTF-8 bytes of text and patterns alike, one
+// byte per character, so ".", ranges, and lengths count what grep counts.
+export const toBytes = (text: string): string => {
+  let out = ''
+  for (const byte of new TextEncoder().encode(text)) out += String.fromCharCode(byte)
+  return out
+}
+
+const POSIX_CLASSES: Record<string, string> = {
+  space: '\\t\\n\\v\\f\\r ',
+  blank: '\\t ',
+  digit: '0-9',
+  alpha: 'A-Za-z',
+  alnum: 'A-Za-z0-9',
+  upper: 'A-Z',
+  lower: 'a-z',
+  xdigit: '0-9A-Fa-f',
+}
+
+// An extended regex as grep reads it in the C locale, spelled for
+// JavaScript: \s and \S as ASCII whitespace; inside a bracket expression a
+// backslash is literal, a leading ] is a member, and the POSIX classes above
+// expand. A construct with no faithful spelling throws.
 export const toGrepRegex = (source: string): string => {
   let out = ''
-  let inBracket = false
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i]
-    const after = source[i + 1]
-    if (ch === '\\' && after !== undefined) {
-      if (!inBracket && after === 's') out += '[\\t\\n\\v\\f\\r ]'
-      else if (!inBracket && after === 'S') out += '[^\\t\\n\\v\\f\\r ]'
-      else out += ch + after
+  let i = 0
+  while (i < source.length) {
+    const ch = source[i] ?? ''
+    if (ch === '\\' && i + 1 < source.length) {
+      const after = source[i + 1] ?? ''
+      out += after === 's' ? '[\\t\\n\\v\\f\\r ]' : after === 'S' ? '[^\\t\\n\\v\\f\\r ]' : ch + after
+      i += 2
+      continue
+    }
+    if (ch !== '[') {
+      out += ch
       i += 1
       continue
     }
-    if (ch === '[' && !inBracket) inBracket = true
-    else if (ch === ']' && inBracket) inBracket = false
-    out += ch
+    let j = i + 1
+    let body = ''
+    if (source[j] === '^') {
+      body += '^'
+      j += 1
+    }
+    if (source[j] === ']') {
+      body += '\\]'
+      j += 1
+    }
+    for (;;) {
+      const c = source[j]
+      if (c === undefined) throw new Error('unterminated bracket expression')
+      if (c === ']') break
+      if (c === '[' && source[j + 1] === ':') {
+        const close = source.indexOf(':]', j + 2)
+        const expansion = close < 0 ? undefined : POSIX_CLASSES[source.slice(j + 2, close)]
+        if (expansion === undefined) throw new Error('unsupported bracket class')
+        body += expansion
+        j = close + 2
+        continue
+      }
+      if (c === '[' && (source[j + 1] === '.' || source[j + 1] === '=')) throw new Error('unsupported collating element')
+      body += c === '\\' ? '\\\\' : c
+      j += 1
+    }
+    out += `[${body}]`
+    i = j + 1
   }
-  return out
+  return toBytes(out)
 }
 
 export const parsePatterns = (tsv: string): Patterns => {
@@ -87,10 +136,18 @@ export const scan = (p: Patterns, text: string, options: ScanOptions = {}): Scan
   const skip = new Set(options.skip ?? [])
   if (profile === 'prose') for (const name of classNames(p, 'prose-skip')) skip.add(name)
   const only = options.only === undefined ? undefined : new Set(options.only)
-  const allow = (options.allow ?? []).map(entry => new RegExp(toGrepRegex(entry)))
+  // An allowlist entry with no faithful spelling is left out: one fewer
+  // exemption can only make the scan stricter than the script's.
+  const allow = (options.allow ?? []).flatMap(entry => {
+    try {
+      return [new RegExp(toGrepRegex(entry))]
+    } catch {
+      return []
+    }
+  })
 
   // grep counts lines; a trailing newline ends the last line, it adds none.
-  let lines = text.split('\n')
+  let lines = toBytes(text).split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
   lines = lines.map(line => p.masks.reduce((out, mask) => out.replace(mask.regex, mask.repl), line))
   if (profile === 'diff') {

@@ -8,6 +8,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {},
       prose: {},
       diffAllow: {},
+      edgeAllow: {},
     },
   },
   {
@@ -18,6 +19,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {},
       prose: {"email-address": 3},
       diffAllow: {},
+      edgeAllow: {"email-address": 1},
     },
   },
   {
@@ -28,6 +30,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {},
       prose: {},
       diffAllow: {},
+      edgeAllow: {},
     },
   },
   {
@@ -38,6 +41,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {},
       prose: {"email-address": 1},
       diffAllow: {},
+      edgeAllow: {"email-address": 1},
     },
   },
   {
@@ -48,6 +52,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {},
       prose: {"email-address": 3},
       diffAllow: {},
+      edgeAllow: {"email-address": 1},
     },
   },
   {
@@ -58,6 +63,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {},
       prose: {},
       diffAllow: {},
+      edgeAllow: {},
     },
   },
   {
@@ -68,6 +74,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
       prose: {},
       diffAllow: {"dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -78,6 +85,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"identifier-keyword": 1, "clinical-keyword": 1},
       prose: {},
       diffAllow: {"identifier-keyword": 1, "clinical-keyword": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -88,6 +96,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"ssn-shaped": 1},
       prose: {"ssn-shaped": 1, "email-address": 1},
       diffAllow: {"ssn-shaped": 1},
+      edgeAllow: {"ssn-shaped": 1},
     },
   },
   {
@@ -98,6 +107,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"phone-shaped": 1, "street-address": 1},
       prose: {"phone-shaped": 1, "street-address": 1},
       diffAllow: {"phone-shaped": 1, "street-address": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -108,6 +118,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"email-address": 1},
       prose: {"email-address": 1},
       diffAllow: {},
+      edgeAllow: {},
     },
   },
   {
@@ -118,6 +129,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"email-address": 1},
       prose: {"email-address": 1},
       diffAllow: {"email-address": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -128,6 +140,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"ssn-shaped": 1},
       prose: {"ssn-shaped": 1},
       diffAllow: {"ssn-shaped": 1},
+      edgeAllow: {"ssn-shaped": 1},
     },
   },
   {
@@ -138,6 +151,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"date-shaped": 1, "dob-keyword": 1, "patient-name-keyword": 1},
       prose: {"date-shaped": 1, "patient-name-keyword": 1},
       diffAllow: {"date-shaped": 1, "dob-keyword": 1, "patient-name-keyword": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -148,6 +162,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"email-address": 1},
       prose: {"email-address": 3},
       diffAllow: {"email-address": 1},
+      edgeAllow: {"email-address": 1},
     },
   },
   {
@@ -158,6 +173,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"phone-shaped": 1},
       prose: {"phone-shaped": 1},
       diffAllow: {"phone-shaped": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -168,6 +184,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"ssn-shaped": 1, "phone-shaped": 1, "dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
       prose: {"ssn-shaped": 1, "phone-shaped": 1},
       diffAllow: {"ssn-shaped": 1, "phone-shaped": 1, "dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -178,6 +195,18 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"ssn-shaped": 1, "identifier-keyword": 1},
       prose: {"ssn-shaped": 1},
       diffAllow: {"ssn-shaped": 1, "identifier-keyword": 1},
+      edgeAllow: {},
+    },
+  },
+  {
+    name: "edge-bytes.txt",
+    text: "é987-65-4320\n987-65-4320 x\n",
+    counts: {
+      default: {"ssn-shaped": 2},
+      diff: {"ssn-shaped": 2},
+      prose: {"ssn-shaped": 2},
+      diffAllow: {"ssn-shaped": 2},
+      edgeAllow: {"ssn-shaped": 2},
     },
   },
   {
@@ -188,6 +217,7 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"ssn-shaped": 1},
       prose: {"ssn-shaped": 1},
       diffAllow: {"ssn-shaped": 1},
+      edgeAllow: {},
     },
   },
   {
@@ -198,7 +228,9 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {},
       prose: {},
       diffAllow: {},
+      edgeAllow: {},
     },
   },
 ]
 export const ALLOW_ENTRIES = ["@example\\.invalid","safe\\s"]
+export const EDGE_ENTRIES = ["[\\s]","^.{12}$"]

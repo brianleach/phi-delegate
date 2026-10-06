@@ -54,7 +54,9 @@ if printf '%s' "$payload" | grep -q -F '.phi-task'; then
     command="$(printf '%s' "$payload" | sed -n -E 's/.*"command" *: *"(([^"\\]|\\.)*)".*/\1/p' | head -n 1 \
       | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g')"
     plain_arg="([^][:space:];&|\`\$<>(){}*?~\\'\"[]+|\"[^\"\$\`\\]*\"|'[^']*')"
-    plain_script="^[[:space:]]*(bash[[:space:]]+)?([A-Za-z0-9_./~-]*/)?(delegate|interactive|collect|cleanup)\\.sh([[:space:]]+$plain_arg)*[[:space:]]*\$"
+    script='(delegate|interactive|collect|cleanup)\.sh'
+    script_path="(([A-Za-z0-9_./~-]*/)?$script|\"([^\"\$\`\\]*/)?$script\"|'([^']*/)?$script')"
+    plain_script="^[[:space:]]*(bash[[:space:]]+)?$script_path([[:space:]]+$plain_arg)*[[:space:]]*\$"
     plain_mkdir='^[[:space:]]*mkdir[[:space:]]+-p[[:space:]]+\.phi-tasks/?[[:space:]]*$'
     if ! printf '%s' "$command" | grep -q -E -e "$plain_script" -e "$plain_mkdir"; then
       tasks_blocked=1

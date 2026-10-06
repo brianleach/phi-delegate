@@ -12,6 +12,7 @@ type Stubs = {
   failPrepare?: boolean
   unreadable?: string[]
   quarantine?: boolean
+  failEnv?: boolean
   files?: Record<string, string>
   failCwd?: boolean
   failRun?: boolean
@@ -32,7 +33,8 @@ type Seen = {
 const stub = (on: any, s: Stubs = {}): Seen => {
   const seen: Seen = { asked: [], writes: [], submitted: [], runs: [], ranTools: [], opened: [] }
   const answers = [...(s.answers ?? [])]
-  mock.env(on, s.env ?? {})
+  if (s.failEnv === true) on('env.get', () => ({ deny: 'unavailable' }))
+  else mock.env(on, s.env ?? {})
   mock.clock(on, { now: 1_700_000_000_000 })
   on('session.cwd', () => (s.failCwd === true ? { deny: 'no cwd' } : { value: ROOT }))
   on('fs.stat', ($: unknown, e: any) => ({ value: { kind: 'directory', size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
@@ -173,11 +175,19 @@ test('scrubbing can be turned off', { options: { scrub_tool_output: false } }, a
   expect(await $.tool.call({ tool: 'Read', file_path: 'notes.txt' })).toMatchObject({ result: `ssn ${SSN}` })
 })
 
-test('the scrubber fails closed once the tool has run', { options: { allowlist_file: '/etc/allow' } }, async ($, on) => {
-  stub(on, { toolText: `ssn ${SSN}`, files: { '/etc/allow': '(unclosed\n' } })
+test('an allowlist entry grep and JavaScript read differently is left out, never loosening', { options: { allowlist_file: '/etc/allow' } }, async ($, on) => {
+  stub(on, { toolText: `ssn ${SSN}`, files: { '/etc/allow': '(unclosed\n[[:punct:]]\n' } })
   const out: any = await $.tool.call({ tool: 'Read', file_path: 'notes.txt' })
-  expect(out.deny).toMatch(/Any output was withheld/)
+  expect(out.deny).toMatch(/ssn-shaped 1/)
   expect(JSON.stringify(out)).not.toContain('987-65')
+})
+
+test('the scrubber fails closed when it cannot run', async ($, on) => {
+  const seen = stub(on, { failEnv: true, toolText: `ssn ${SSN}` })
+  const out: any = await $.tool.call({ tool: 'mcp__db__query', sql: 'select 1' })
+  expect(out.deny).toMatch(/PHI check on this call failed/)
+  expect(JSON.stringify(out)).not.toContain('987-65')
+  expect(seen.ranTools).toEqual([])
 })
 
 // Prompt interception
@@ -445,4 +455,30 @@ test('in a repo with delegate state, recursive grep must exclude it', async ($, 
 test('in a repo with no delegate state, recursive grep is untouched', async ($, on) => {
   stub(on)
   expect(await $.tool.call({ tool: 'Bash', command: 'grep -R -n patient .' })).toMatchObject({ result: 'ok' })
+})
+
+// Regressions from the third PR review, round two
+
+test('a PHI source pattern that does not compile blocks Bash, by count only', async ($, on) => {
+  const seen = stub(on, { files: { '/.phi-sources': '\\bclinic-prod-db\\b(\n' } })
+  const out: any = await $.tool.call({ tool: 'Bash', command: 'mysql -h clinic-prod-db' })
+  expect(out.deny).toMatch(/1 PHI source pattern\(s\) do not compile/)
+  expect(out.deny).not.toContain('clinic-prod-db')
+  expect(seen.ranTools).toEqual([])
+})
+
+test('a typed task name is scanned before cleanup, so an email cannot slip through', async ($, on) => {
+  const seen = stub(on, { answers: ['Stage as private input', 'someone@example.invalid'] })
+  const out: any = await submit($, `fix the record for ${SSN}`)
+  expect(out.text).toMatch(/task staged-[a-z0-9]+/)
+  expect(out.text).not.toMatch(/someone/)
+  expect(seen.writes[0]?.path).toMatch(/staged-[a-z0-9]+\.private\.md$/)
+})
+
+test('a quoted script path naming .phi-tasks is allowed; an expanded one is not', async ($, on) => {
+  stub(on)
+  for (const command of ['bash "/opt/phi delegate/scripts/delegate.sh" ".phi-tasks/01-fix.md" --pr', "bash '/opt/x/scripts/delegate.sh' .phi-tasks/01.md"]) {
+    expect(await $.tool.call({ tool: 'Bash', command })).toMatchObject({ result: 'ok' })
+  }
+  expect((await $.tool.call({ tool: 'Bash', command: 'bash "$HOME/scripts/delegate.sh" .phi-tasks/01.md' })).deny ?? '').toMatch(/private input sidecars/)
 })

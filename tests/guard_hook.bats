@@ -116,3 +116,17 @@ JSON
     [ "$status" -eq 0 ]
   done
 }
+
+@test "a quoted script path naming .phi-tasks is allowed; an expanded one is not" {
+  local json="${BATS_TEST_TMPDIR}/payload.json"
+  cat >"$json" <<'JSON'
+{"cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"bash \"/opt/phi delegate/scripts/delegate.sh\" \".phi-tasks/01-fix.md\" --pr"}}
+JSON
+  run "$HOOK" <"$json"
+  [ "$status" -eq 0 ]
+  cat >"$json" <<'JSON'
+{"cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"bash \"$HOME/scripts/delegate.sh\" .phi-tasks/01.md"}}
+JSON
+  run "$HOOK" <"$json"
+  [ "$status" -eq 2 ]
+}

@@ -127,7 +127,7 @@ rows, or `claude plugin install --config key=value`:
 |---|---|---|
 | `prompt_keyword_classes` | `false` | Also scan prompts and tool output for the keyword classes. Off because talking about schemas trips them. |
 | `allowlist_file` | empty | A file of extended regexes, one per line, applied to matched lines (for example your company email domain). |
-| `phi_sources` | `snowsql`, `psql` against a `*PROD*` variable | JavaScript regexes for Bash commands that reach PHI. A repo adds its own in a `.phi-sources` file at its root, same format. |
+| `phi_sources` | `snowsql`, `psql` against a `*PROD*` variable | JavaScript regexes for Bash commands that reach PHI. A repo adds its own in a `.phi-sources` file at its root, same format. A pattern that does not compile, or a `.phi-sources` that cannot be read, blocks Bash until it is fixed. |
 | `scrub_tool_output` | `true` | Replace flagged tool results with a counts-only notice. |
 
 ### Without the plugin

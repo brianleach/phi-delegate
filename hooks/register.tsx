@@ -144,9 +144,11 @@ async function stagePrivateInput($: EngineInterface, text: string): Promise<stri
     options: specs.length > 0 ? [...specs, NEW_TASK] : [NEW_TASK, CANCEL],
   })
   if (picked === CANCEL) return undefined
-  let name = picked === NEW_TASK ? '' : taskName(picked, picked)
-  // A typed name reaches the model, so it must itself be clean.
-  if (name === '' || (await scanText($, name, 'default')).total > 0) {
+  // A typed name reaches the model, so it must itself be clean, checked as
+  // typed: cleanup would turn an email's @ into a dash and hide it.
+  const isClean = picked !== NEW_TASK && (await scanText($, picked, 'default')).total === 0
+  let name = isClean ? taskName(picked, picked) : ''
+  if (name === '') {
     name = `staged-${(await $.clock.now()).toString(36)}`
   }
   const file = `${dir}/${name}.private.md`
@@ -243,8 +245,12 @@ export const register: Register = (on, options) => {
     const sourcesFile = `${await repoRoot($)}/.phi-sources`
     const repoFile = (await $.fs.exists(sourcesFile)) ? await $.fs.read(sourcesFile) : ''
     const { regexes, invalid } = compileSources([...config.phiSources, ...repoFile.split('\n')])
+    // A pattern that does not compile is protection that silently went
+    // missing, so Bash stays denied until it is fixed.
     if (invalid > 0) {
-      $.ui.log(`phi-delegate: ${invalid} PHI source pattern(s) do not compile and were skipped`, { to: 'debug' })
+      return {
+        deny: `phi-delegate: ${invalid} PHI source pattern(s) do not compile, so Bash is blocked until they are fixed (the phi_sources option or .phi-sources at the repo root).`,
+      }
     }
     if (!regexes.some(re => re.test(e.command))) return next(e)
     await flag($)

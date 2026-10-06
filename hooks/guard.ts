@@ -7,10 +7,10 @@
 // arguments), or creating the folder. No globs, redirections, pipes, or
 // chains, since any of those can read a sidecar without naming it.
 const PLAIN_ARG = `(?:[^\\s;&|\`$<>(){}*?[\\]~\\\\'"]+|"[^"$\`\\\\]*"|'[^']*')`
+const SCRIPT = '(?:delegate|interactive|collect|cleanup)\\.sh'
+const SCRIPT_PATH = `(?:(?:[A-Za-z0-9_./~-]*/)?${SCRIPT}|"(?:[^"$\`\\\\]*/)?${SCRIPT}"|'(?:[^']*/)?${SCRIPT}')`
 const TASKS_ALLOWED = [
-  new RegExp(
-    `^\\s*(?:bash\\s+)?(?:[A-Za-z0-9_./~-]*/)?(?:delegate|interactive|collect|cleanup)\\.sh(?:\\s+${PLAIN_ARG})*\\s*$`,
-  ),
+  new RegExp(`^\\s*(?:bash\\s+)?${SCRIPT_PATH}(?:\\s+${PLAIN_ARG})*\\s*$`),
   /^\s*mkdir\s+-p\s+\.phi-tasks\/?\s*$/,
 ]
 

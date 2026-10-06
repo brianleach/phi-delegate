@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { PATTERNS_TSV } from '../../hooks/patterns.generated'
 import { parsePatterns, scan } from '../../hooks/scan'
 import type { ScanOptions } from '../../hooks/scan'
-import { ALLOW_ENTRIES, FIXTURES } from './parity.generated'
+import { ALLOW_ENTRIES, EDGE_ENTRIES, FIXTURES } from './parity.generated'
 
 const patterns = parsePatterns(PATTERNS_TSV)
 
@@ -12,13 +12,14 @@ const VARIANTS: Record<string, ScanOptions> = {
   diff: { profile: 'diff' },
   prose: { profile: 'prose' },
   diffAllow: { profile: 'diff', allow: ALLOW_ENTRIES },
+  edgeAllow: { profile: 'default', allow: EDGE_ENTRIES },
 }
 
 const countsOf = (text: string, options: ScanOptions): Record<string, number> =>
   Object.fromEntries(scan(patterns, text, options).counts.map(c => [c.name, c.lines]))
 
 test('every fixture gives phi-scan.sh per-class counts under every profile', () => {
-  expect(FIXTURES.length).toBe(20)
+  expect(FIXTURES.length).toBe(21)
   for (const fixture of FIXTURES) {
     for (const [variant, options] of Object.entries(VARIANTS)) {
       expect({ fixture: fixture.name, variant, counts: countsOf(fixture.text, options) }).toEqual({
