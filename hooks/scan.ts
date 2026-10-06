@@ -87,4 +87,4 @@ export const scan = (p: Patterns, text: string, options: ScanOptions = {}): Scan
 export const describe = (result: ScanResult): string =>
   result.total === 0
     ? 'phi-scan: clean'
-    : `${result.counts.map(c => `${c.name} ${c.lines}`).join(', ')} (text withheld)`
+    : `${result.counts.map(c => `${c.name} ${c.lines}`).join(', ')}; text withheld`
