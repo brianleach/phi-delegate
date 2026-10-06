@@ -27,9 +27,25 @@
 #                   loaded implicitly, so a tree cannot allowlist itself.
 set -euo pipefail
 
-CLASSES=" ssn-shaped phone-shaped email-address date-shaped iso-date dob-keyword"
-CLASSES+=" identifier-keyword patient-name-keyword clinical-keyword street-address"
-CLASSES+=" long-digit-run "
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATTERNS="$SCRIPT_DIR/phi-patterns.tsv"
+
+# Parallel arrays (bash 3.2 has no associative arrays), filled from the
+# pattern file shared with the mod. Empty fields are written "-".
+class_names=() class_flags=() class_regex=() mask_regex=() mask_repl=()
+drop_flags=() drop_regex=()
+CLASSES=" " PROSE_SKIP=""
+while IFS=$'\t' read -r kind name flags tags regex repl; do
+  case "$kind" in
+    class)
+      class_names+=("$name"); class_flags+=("$flags"); class_regex+=("$regex")
+      CLASSES+="$name "
+      case ",$tags," in *,prose-skip,*) PROSE_SKIP+=",$name" ;; esac
+      ;;
+    mask) mask_regex+=("$regex"); mask_repl+=("$repl") ;;
+    drop) drop_flags+=("$flags"); drop_regex+=("$regex") ;;
+  esac
+done <"$PATTERNS"
 
 die() { echo "error: $*" >&2; exit 2; }
 check_classes() {
@@ -53,7 +69,7 @@ while [ $# -gt 0 ]; do
 done
 case "$profile" in
   default|diff) ;;
-  prose) skip="$skip,dob-keyword,identifier-keyword,clinical-keyword" ;;
+  prose) skip="$skip$PROSE_SKIP" ;;
   *) die "unknown profile: $profile" ;;
 esac
 [ -z "$allow" ] || [ -f "$allow" ] || die "no such allowlist: $allow"
@@ -73,20 +89,25 @@ cat "$input" >"$tmp"
 # 9+ digit number outside those shapes is still flagged.
 masked="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
 trap 'rm -f "$tmp" "$masked"' EXIT
-sed -E \
-  -e 's#arn:aws:[A-Za-z0-9:/_.-]+#[ARN]#g' \
-  -e 's#(^|[^0-9])[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com#\1[ECR]#g' \
-  "$tmp" >"$masked"
-mv "$masked" "$tmp"
+i=0
+while [ "$i" -lt "${#mask_regex[@]}" ]; do
+  sed -E "s#${mask_regex[$i]}#${mask_repl[$i]}#g" "$tmp" >"$masked"
+  mv "$masked" "$tmp"
+  i=$((i + 1))
+done
 
 if [ "$profile" = diff ]; then
   # Author/trailer lines are dropped only at column 0 (git log -p commit
   # headers) or at exactly four spaces (git log -p message trailers). A diff
   # content line starts with +, -, or one space and is kept even when its
   # content looks like metadata: a dropped line is an unscanned line.
-  grep -v -E -i -e '^(diff --git |index [0-9a-f]+\.\.[0-9a-f]+|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@ )' \
-    -e '^( {4})?(Author|Signed-off-by|Co-Authored-By):' "$tmp" >"$masked" || true
-  mv "$masked" "$tmp"
+  i=0
+  while [ "$i" -lt "${#drop_regex[@]}" ]; do
+    case "${drop_flags[$i]}" in i) dflag=-i ;; *) dflag=-E ;; esac
+    grep -v -E "$dflag" -e "${drop_regex[$i]}" "$tmp" >"$masked" || true
+    mv "$masked" "$tmp"
+    i=$((i + 1))
+  done
 fi
 
 allow_re="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
@@ -97,15 +118,14 @@ fi
 
 total=0
 report() {
-  local label="$1" pattern="$2" flags="${3:-}" n
+  local label="$1" pattern="$2" flags="$3" n
   if [ -n "$only" ] && [[ ",$only," != *",$label,"* ]]; then return 0; fi
   if [[ ",$skip," == *",$label,"* ]]; then return 0; fi
   # Matched lines stay inside this pipeline and are only counted.
-  # shellcheck disable=SC2086
   if [ -s "$allow_re" ]; then
-    n="$({ grep $flags -E -- "$pattern" "$tmp" || true; } | { grep -c -v -E -f "$allow_re" || true; })"
+    n="$({ grep "$flags" -E -- "$pattern" "$tmp" || true; } | { grep -c -v -E -f "$allow_re" || true; })"
   else
-    n="$(grep -c $flags -E -- "$pattern" "$tmp" || true)"
+    n="$(grep -c "$flags" -E -- "$pattern" "$tmp" || true)"
   fi
   n="${n:-0}"
   if [ "$n" -gt 0 ]; then
@@ -114,17 +134,12 @@ report() {
   fi
 }
 
-report "ssn-shaped"        '\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b'
-report "phone-shaped"      '(\(|\b)[0-9]{3}(\) ?|[-. ])[0-9]{3}[-. ][0-9]{4}\b'
-report "email-address"     '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'
-report "date-shaped"       '\b(0?[1-9]|1[0-2])[/-](0?[1-9]|[12][0-9]|3[01])[/-]([0-9]{2}|[0-9]{4})\b'
-report "iso-date"          '\b(19|20)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])\b'
-report "dob-keyword"       '\b(dob|date of birth|birth ?date)\b' -i
-report "identifier-keyword" '\b(mrn|medical record|patient id|member id|policy number|ssn|social security)\b' -i
-report "patient-name-keyword" '\b(patient name|first_name|last_name|full_name)\s*[:=]' -i
-report "clinical-keyword"  '\b(diagnos(is|es)|icd-?10|rx|prescription|dosage)\b' -i
-report "street-address"    '\b[0-9]{1,6} [A-Za-z0-9 .]+ (street|st|avenue|ave|road|rd|blvd|lane|ln|drive|dr)\b\.?' -i
-report "long-digit-run"    '\b[0-9]{9,}\b'
+i=0
+while [ "$i" -lt "${#class_names[@]}" ]; do
+  case "${class_flags[$i]}" in i) cflag=-i ;; *) cflag=-E ;; esac
+  report "${class_names[$i]}" "${class_regex[$i]}" "$cflag"
+  i=$((i + 1))
+done
 
 if [ "$total" -gt 0 ]; then
   echo "phi-scan: $total potential PHI line(s) flagged (text withheld)"

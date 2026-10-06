@@ -13,15 +13,28 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Install tools (Ubuntu)
         if: runner.os == 'Linux'
-        run: sudo npm install -g bats
+        run: sudo npm install -g bats @anthropic-ai/claude-code
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install shellcheck
-          npm install -g bats
+          npm install -g bats @anthropic-ai/claude-code
+      - name: Claude Code version (mods need 2.1.287 or newer)
+        run: |
+          claude --version
+          printf '%s\n2.1.287\n' "$(claude --version | awk '{print $1}')" | sort -V -C -r
       - name: Shellcheck
         run: shellcheck scripts/*.sh install.sh tests/helpers.bash
+      - name: Generated mod data is current
+        run: scripts/gen-mod-data.sh --check
+      - name: Validate plugin
+        run: claude plugin validate .
+      - name: Mod tests
+        run: claude plugin test .
       - name: Run bats suite
         run: bats tests/
