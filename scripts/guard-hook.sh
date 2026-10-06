@@ -13,6 +13,12 @@ set -euo pipefail
 
 payload="$(cat)"
 
+# phi-claude.sh marks the covered delegate session. Plugin and managed hooks
+# load there too, and the delegate must be able to read its own task copy.
+if [ "${PHI_DELEGATE_SESSION:-}" = "1" ]; then
+  exit 0
+fi
+
 # Developing this skill means editing files that name the quarantined
 # paths. Exempt tool calls that target the skill repo itself, either by
 # running with cwd inside it or by naming its resolved path explicitly.
@@ -37,6 +43,8 @@ elif printf '%s' "$payload" | grep -q -E '\.phi-handoff|\.phi-task\.md'; then
   blocked_reason="delegate-side task and handoff copies live inside the worktree and may contain PHI"
 elif printf '%s' "$payload" | grep -q -E -- '--full-diff'; then
   blocked_reason="collect.sh --full-diff prints delegate output verbatim and is reserved for the human"
+elif printf '%s' "$payload" | grep -q -E '\.private\.md'; then
+  blocked_reason="*.private.md sidecars hold private input staged for a delegate"
 elif printf '%s' "$payload" | grep -q -E '\.phi-delegate/claude'; then
   blocked_reason="the delegate CLAUDE_CONFIG_DIR holds its own session state"
 fi

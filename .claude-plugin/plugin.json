@@ -1,0 +1,37 @@
+{
+  "name": "phi-delegate",
+  "version": "0.2.0",
+  "description": "Always-on PHI guardrail for Claude Code plus a covered BAA/ZDR delegate lane",
+  "author": { "name": "phi-delegate contributors" },
+  "repository": "https://github.com/brianleach/phi-delegate",
+  "license": "MIT",
+  "keywords": ["hipaa", "phi", "baa", "zdr", "guardrail"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "prompt_keyword_classes": {
+      "type": "boolean",
+      "title": "Scan prompts and tool output for keyword classes",
+      "description": "Also flag dob-keyword, identifier-keyword, patient-name-keyword, and clinical-keyword. Off by default because schema talk trips them.",
+      "default": false
+    },
+    "allowlist_file": {
+      "type": "string",
+      "title": "Allowlist file",
+      "description": "Optional path to a file of extended regexes, one per line, applied to matched lines (for example your company email domain). Empty for none.",
+      "default": ""
+    },
+    "phi_sources": {
+      "type": "string",
+      "multiple": true,
+      "title": "PHI source command patterns",
+      "description": "JavaScript regexes matched against Bash commands. A match is denied with an instruction to delegate. A repo can add more in a .phi-sources file at its root.",
+      "default": ["\\bsnowsql\\b", "\\bpsql\\b[^|;&]*\\$\\{?[A-Z0-9_]*PROD[A-Z0-9_]*"]
+    },
+    "scrub_tool_output": {
+      "type": "boolean",
+      "title": "Scrub tool output",
+      "description": "Replace flagged Bash, Read, Grep, and MCP results with a counts-only notice.",
+      "default": true
+    }
+  }
+}

@@ -28,3 +28,16 @@ setup() { HOOK="$(phi_repo_root)/scripts/guard-hook.sh"; }
   run bash -c "printf '%s' '{\"cwd\":\"$(phi_repo_root)\",\"tool_input\":{\"file_path\":\"scripts/delegate.sh\",\"content\":\".phi-worktrees\"}}' | '$HOOK'"
   [ "$status" -eq 0 ]
 }
+
+@test "blocks private input sidecars" {
+  run bash -c "printf '%s' '{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\".phi-tasks/01-x.private.md\"}}' | '$HOOK'"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"private input"* ]]
+}
+
+@test "stands down inside a covered delegate session" {
+  run bash -c "printf '%s' '{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\".phi-task.md\"}}' | PHI_DELEGATE_SESSION=1 '$HOOK'"
+  [ "$status" -eq 0 ]
+  run bash -c "printf '%s' '{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\".phi-task.md\"}}' | '$HOOK'"
+  [ "$status" -eq 2 ]
+}

@@ -42,6 +42,7 @@ setup() {
   grep -q '^ANTHROPIC_API_KEY=test-key-not-real$' "$FAKE_CLAUDE_ENV"
   grep -q '^ANTHROPIC_BASE_URL=https://api.anthropic.com$' "$FAKE_CLAUDE_ENV"
   grep -q "^CLAUDE_CONFIG_DIR=${PHI_DELEGATE_CONFIG_DIR}$" "$FAKE_CLAUDE_ENV"
+  grep -q '^PHI_DELEGATE_SESSION=1$' "$FAKE_CLAUDE_ENV"
   ! grep -q '^ANTHROPIC_AUTH_TOKEN=' "$FAKE_CLAUDE_ENV"
   ! grep -q '^CLAUDE_CODE_OAUTH_TOKEN=' "$FAKE_CLAUDE_ENV"
   grep -qx -- '--strict-mcp-config' "$FAKE_CLAUDE_ARGS"
