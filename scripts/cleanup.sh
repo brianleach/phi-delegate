@@ -15,6 +15,8 @@ delegate that was killed mid-run, a spec that was never collected):
 
   .phi-handoff*.md, .phi-task*.md   at the repo root
   .phi-tasks/                       task specs, including Private input
+  .phi-tasks/*.private.md           private input sidecars the mod staged,
+                                    listed by name
   .phi-worktrees/                   worktrees, handoffs, kept logs, records
   phi/<name> branches               only reported unless --branches; a
                                     branch counts as merged when it is an
@@ -143,9 +145,13 @@ sweep_repo() {
     if [ "$apply" -eq 1 ]; then secure_rm "$f"; removed_total=$((removed_total + 1)); fi
   done
 
-  # Task specs, which may hold a filled Private input section.
+  # Task specs, which may hold a filled Private input section, and the
+  # sidecars the mod stages private input into.
   if [ -d "$root/.phi-tasks" ]; then
-    local n
+    local n s
+    while IFS= read -r s; do
+      [ -n "$s" ] && report "private input sidecar" "${s#"$root"/}"
+    done < <(find "$root/.phi-tasks" -type f -name '*.private.md' | sort)
     n="$(find "$root/.phi-tasks" -type f | wc -l | tr -d ' ')"
     report "task specs" ".phi-tasks/ ($n files)"
     if [ "$apply" -eq 1 ]; then secure_rm_tree "$root/.phi-tasks"; removed_total=$((removed_total + 1)); fi

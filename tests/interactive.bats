@@ -49,3 +49,20 @@ setup() {
   allowed_line=$(grep -nx -- '--allowedTools' "$FAKE_CLAUDE_ARGS" | head -1 | cut -d: -f1)
   [ "$prompt_line" -lt "$allowed_line" ]
 }
+
+@test "a staged sidecar is named as the Private input section, never printed" {
+  printf 'MRN 99887766\n' >.phi-tasks/01-thing.private.md
+  run "$INTERACTIVE" .phi-tasks/01-thing.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Private input section is in the file .phi-tasks/01-thing.private.md"* ]]
+  [[ "$output" != *"99887766"* ]]
+  run "$INTERACTIVE" .phi-tasks/01-thing.private.md
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"private input sidecar"* ]]
+}
+
+@test "no sidecar, no Private input note" {
+  run "$INTERACTIVE" .phi-tasks/01-thing.md
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"private.md"* ]]
+}

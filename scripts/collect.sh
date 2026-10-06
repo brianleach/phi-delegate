@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: collect.sh <name> [--base <branch>] [--merge | --reject | --full-diff]
+Usage: collect.sh <name> [--base <branch>] [--merge | --reject | --pr | --full-diff]
 
 Modes:
   (default)    print diff --stat, the PHI scan of the diff, and the handoff
@@ -19,6 +19,8 @@ Modes:
   --reject     discard the worktree, its branch, and its records (same
                deletions as --merge); closes an open PR and deletes the
                remote branch when possible
+  --pr         push phi/<name> and open a draft PR whose body is the scanned
+               handoff and the diff scan, or print the URL of the open one
   --full-diff  print the complete diff. FOR HUMANS ONLY: the guard hook
                blocks this flag inside the orchestrator session because the
                diff may carry PHI.
@@ -49,7 +51,7 @@ purge_records() {
   local spec_path
   if [ -f "$spec_record" ]; then
     spec_path="$(cat "$spec_record")"
-    [ -f "$spec_path" ] && secure_rm "$spec_path"
+    secure_rm "$spec_path" "${spec_path%.md}.private.md"
   fi
   secure_rm "$handoff_file" "$log_file"
   rm -f "$base_file" "$spec_record"
@@ -62,6 +64,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --merge) mode="merge"; shift ;;
     --reject) mode="reject"; shift ;;
+    --pr) mode="pr"; shift ;;
     --full-diff) mode="full"; shift ;;
     --base)
       [ $# -ge 2 ] || usage
@@ -129,6 +132,37 @@ fi
 
 if [ "$mode" = "full" ]; then
   git diff "$base_branch...$branch"
+  exit 0
+fi
+
+if [ "$mode" = "pr" ]; then
+  git remote get-url origin >/dev/null 2>&1 || { echo "error: this repo has no origin remote" >&2; exit 1; }
+  command -v gh >/dev/null 2>&1 || { echo "error: gh is not on PATH" >&2; exit 1; }
+  if pr_url="$(gh pr view "$branch" --json url --jq .url 2>/dev/null)" && [ -n "$pr_url" ]; then
+    echo "==> PR: $pr_url"
+    exit 0
+  fi
+  if [ "$(git rev-list --count "$base_branch..$branch")" -eq 0 ]; then
+    echo "error: $branch has no commits beyond $base_branch" >&2
+    exit 1
+  fi
+  pr_body="$(mktemp "${TMPDIR:-/tmp}/phi-collect-pr.XXXXXX")"
+  trap 'rm -f "$pr_body"' EXIT
+  {
+    printf '## Delegate handoff\n\n'
+    if [ -f "$handoff_file" ] && "$SCRIPT_DIR/phi-scan.sh" "$handoff_file" >/dev/null 2>&1; then
+      cat "$handoff_file"
+    else
+      printf '_Handoff withheld or not written_\n'
+    fi
+    # shellcheck disable=SC2016
+    printf '\n\n## Diff scan\n\n```\n%s\n```\n' \
+      "$(git diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" --profile diff 2>&1 || true)"
+  } >"$pr_body"
+  git push -u origin "$branch"
+  pr_url="$(gh pr create --draft --base "$base_branch" --head "$branch" \
+    --title "phi-delegate: $name" --body-file "$pr_body")"
+  echo "==> draft PR: $pr_url"
   exit 0
 fi
 

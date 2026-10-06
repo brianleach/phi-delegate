@@ -71,7 +71,7 @@ setup() {
 install_scan_spy() {
   SPY_DIR="${BATS_TEST_TMPDIR}/spy-scripts"
   mkdir -p "$SPY_DIR"
-  cp "$ROOT"/scripts/*.sh "$SPY_DIR/"
+  cp "$ROOT"/scripts/*.sh "$ROOT"/scripts/phi-patterns.tsv "$SPY_DIR/"
   mv "$SPY_DIR/phi-scan.sh" "$SPY_DIR/phi-scan.real.sh"
   export SCAN_SPY_LOG="${BATS_TEST_TMPDIR}/scan-calls.log"
   cat >"$SPY_DIR/phi-scan.sh" <<'SPY'
@@ -112,4 +112,91 @@ assert_scan_profiles() {
   run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md"
   [ "$status" -eq 1 ]
   [[ "$output" == *"detached HEAD"* ]]
+}
+
+@test "a staged private input sidecar becomes the Private input section, unprinted" {
+  printf 'MRN 99887766\n' >"${BATS_TEST_TMPDIR}/01-task.private.md"
+  cat >"${BATS_TEST_TMPDIR}/bin/claude" <<'FAKE'
+#!/usr/bin/env bash
+cp .phi-task.md "${FAKE_TASK_COPY}"
+printf 'done\n' >.phi-handoff.md
+echo '{"type":"result","result":"done"}'
+FAKE
+  export FAKE_TASK_COPY="${BATS_TEST_TMPDIR}/task-copy.md"
+  run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"appended staged private input from 01-task.private.md"* ]]
+  [[ "$output" != *"99887766"* ]]
+  grep -qx 'do an offline task' "$FAKE_TASK_COPY"
+  grep -qx '## Private input' "$FAKE_TASK_COPY"
+  grep -qx 'MRN 99887766' "$FAKE_TASK_COPY"
+  [ ! -f .phi-worktrees/01-task/.phi-task.md ]
+}
+
+@test "without a sidecar the task copy is the spec alone" {
+  cat >"${BATS_TEST_TMPDIR}/bin/claude" <<'FAKE'
+#!/usr/bin/env bash
+cp .phi-task.md "${FAKE_TASK_COPY}"
+echo '{"type":"result","result":"done"}'
+FAKE
+  export FAKE_TASK_COPY="${BATS_TEST_TMPDIR}/task-copy.md"
+  run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md"
+  [ "$status" -eq 0 ]
+  cmp -s "$FAKE_TASK_COPY" "${BATS_TEST_TMPDIR}/01-task.md"
+}
+
+@test "refuses a sidecar passed as the spec" {
+  printf 'MRN 99887766\n' >"${BATS_TEST_TMPDIR}/01-task.private.md"
+  run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.private.md"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"private input sidecar"* ]]
+  [[ "$output" != *"99887766"* ]]
+}
+
+@test "merge and reject delete the sidecar with the spec" {
+  printf 'MRN 99887766\n' >"${BATS_TEST_TMPDIR}/01-task.private.md"
+  "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md" >/dev/null
+  run "$ROOT/scripts/collect.sh" 01-task --merge
+  [ "$status" -eq 0 ]
+  [ ! -f "${BATS_TEST_TMPDIR}/01-task.private.md" ]
+  printf 'do an offline task\n' >"${BATS_TEST_TMPDIR}/02-task.md"
+  printf 'MRN 99887766\n' >"${BATS_TEST_TMPDIR}/02-task.private.md"
+  "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/02-task.md" >/dev/null
+  run "$ROOT/scripts/collect.sh" 02-task --reject
+  [ "$status" -eq 0 ]
+  [ ! -f "${BATS_TEST_TMPDIR}/02-task.private.md" ]
+  [ ! -f "${BATS_TEST_TMPDIR}/02-task.md" ]
+}
+
+# Fake gh for collect.sh --pr: no PR exists until create is called.
+install_fake_gh_pr() {
+  local bin="${BATS_TEST_TMPDIR}/ghbin"
+  mkdir -p "$bin"
+  cat >"${bin}/gh" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"${FAKE_GH_ARGS}"
+case "$1 $2" in
+  "pr view") [ -f "${FAKE_GH_ARGS}.created" ] && echo "https://example.invalid/pr/7" && exit 0; exit 1 ;;
+  "pr create") cp "$(printf '%s\n' "$@" | sed -n '/--body-file/{n;p;}')" "${FAKE_GH_ARGS}.body"; touch "${FAKE_GH_ARGS}.created"; echo "https://example.invalid/pr/7" ;;
+esac
+FAKE
+  chmod +x "${bin}/gh"
+  export PATH="${bin}:${PATH}" FAKE_GH_ARGS="${BATS_TEST_TMPDIR}/gh.args"
+  git init -q --bare "${BATS_TEST_TMPDIR}/origin.git"
+  git remote add origin "${BATS_TEST_TMPDIR}/origin.git"
+}
+
+@test "collect --pr opens a draft PR from the scanned handoff once, then prints it" {
+  install_fake_gh_pr
+  "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md" >/dev/null
+  run "$ROOT/scripts/collect.sh" 01-task --pr
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"draft PR: https://example.invalid/pr/7"* ]]
+  grep -q 'Updated seed.txt' "${FAKE_GH_ARGS}.body"
+  grep -q 'phi-scan: clean' "${FAKE_GH_ARGS}.body"
+  git -C "${BATS_TEST_TMPDIR}/origin.git" show-ref --verify --quiet refs/heads/phi/01-task
+  run "$ROOT/scripts/collect.sh" 01-task --pr
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"==> PR: https://example.invalid/pr/7"* ]]
+  [ "$(grep -c '^pr create' "$FAKE_GH_ARGS")" -eq 1 ]
 }

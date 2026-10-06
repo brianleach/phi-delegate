@@ -10,6 +10,7 @@ setup() {
   printf 'aggregate only\n' >.phi-handoff-01-thing.md
   mkdir -p .phi-tasks
   printf '# Task\n\n## Private input\n\nMRN 99887766\n' >.phi-tasks/01-thing.md
+  printf 'MRN 55443322\n' >.phi-tasks/01-thing.private.md
   mkdir -p .phi-worktrees
   git worktree add -q -b phi/01-thing .phi-worktrees/01-thing main
   printf 'delegate work\n' >>.phi-worktrees/01-thing/seed.txt
@@ -27,7 +28,10 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == *".phi-handoff.md"* ]]
   [[ "$output" == *".phi-handoff-01-thing.md"* ]]
-  [[ "$output" == *".phi-tasks/ (1 files)"* ]]
+  [[ "$output" == *".phi-tasks/ (2 files)"* ]]
+  [[ "$output" == *"private input sidecar: .phi-tasks/01-thing.private.md"* ]]
+  [[ "$output" != *"55443322"* ]]
+  [ -f .phi-tasks/01-thing.private.md ]
   [[ "$output" == *"worktree: .phi-worktrees/01-thing/"* ]]
   [[ "$output" == *".phi-worktrees/01-thing.log"* ]]
   [[ "$output" == *"branch (UNMERGED, kept): phi/01-thing"* ]]
@@ -47,6 +51,7 @@ setup() {
   [ ! -e .phi-handoff.md ]
   [ ! -e .phi-handoff-01-thing.md ]
   [ ! -d .phi-tasks ]
+  [ ! -e .phi-tasks/01-thing.private.md ]
   [ ! -d .phi-worktrees ]
   git show-ref --verify --quiet refs/heads/phi/01-thing
   ! git worktree list --porcelain | grep -q phi-worktrees

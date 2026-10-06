@@ -29,6 +29,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATTERNS="$SCRIPT_DIR/phi-patterns.tsv"
+[ -f "$PATTERNS" ] || { echo "error: pattern file missing: $PATTERNS" >&2; exit 2; }
 
 # Parallel arrays (bash 3.2 has no associative arrays), filled from the
 # pattern file shared with the mod. Empty fields are written "-".

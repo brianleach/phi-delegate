@@ -31,6 +31,8 @@ Differences from delegate.sh, which the human must know:
     approve routine commands. bypassPermissions is refused
   - session state persists under the delegate CLAUDE_CONFIG_DIR until the
     human deletes it; delegate.sh deletes its per-run config dir itself
+  - a staged private input sidecar (<spec>.private.md) is read in place as
+    the spec's Private input section; the human deletes it with the spec
 
 The spec path must be relative to the repo root and must not contain a
 single quote.
@@ -105,9 +107,20 @@ case "$rel_spec" in
     ;;
 esac
 
+case "$rel_spec" in
+  *.private.md)
+    echo "error: $rel_spec is a private input sidecar; pass the spec it belongs to" >&2
+    exit 1
+    ;;
+esac
+private_note=""
+if [ -f "$repo_root/${rel_spec%.md}.private.md" ]; then
+  private_note=" Its Private input section is in the file ${rel_spec%.md}.private.md: read that file too and treat it as the spec section ## Private input. Do not modify or delete it either."
+fi
+
 # Keep this prompt aligned with the one in delegate.sh. It contains no
 # single quotes so it can be printed inside a single-quoted shell string.
-prompt="Read the file $rel_spec in the current directory and complete the task it describes. Do not modify or delete that file.
+prompt="Read the file $rel_spec in the current directory and complete the task it describes. Do not modify or delete that file.$private_note
 
 You are running in a HIPAA-covered, zero-data-retention session. The person who reviews your work is NOT covered and will only see the file .phi-handoff.md that you write. Before you finish, write .phi-handoff.md in the current directory following the Handoff requirements section of the task file exactly. It MUST NOT contain protected health information or personal identifiers of any kind: no names, dates of birth, record or member IDs, addresses, phone numbers, emails, diagnoses, or literal database row values. Avoid dates and digit sequences longer than 6 characters, which the PHI scanner flags. Describe data in the aggregate instead. Do not commit .phi-tasks/ or .phi-handoff.md. Do not write PHI into source files, fixtures, seeds, tests, or commit messages."
 
