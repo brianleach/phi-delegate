@@ -101,7 +101,10 @@ while [ "$i" -lt "${#mask_regex[@]}" ]; do
 done
 
 if [ "$profile" = diff ]; then
-  [ -n "$hunk_start" ] && [ -n "$hunk_end" ] || { echo "error: pattern file has no hunk rows" >&2; exit 2; }
+  if [ -z "$hunk_start" ] || [ -z "$hunk_end" ]; then
+    echo "error: pattern file has no hunk rows" >&2
+    exit 2
+  fi
   # Tag each line H (inside a hunk) or O (outside), so the drop rules below
   # reach only metadata positions. Author/trailer lines are dropped only at
   # column 0 (git log -p commit headers) or at exactly four spaces (git log
