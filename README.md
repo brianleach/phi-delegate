@@ -1,17 +1,30 @@
 # phi-delegate
 
-A Claude Code skill for HIPAA-covered engineering work. Your everyday
-Claude Code session runs on a consumer subscription login that is not
-covered by a BAA. This skill lets that session keep planning and
-reviewing while anything that could touch protected health information
-runs in a separate, headless `claude -p` process authenticated with an
-API key from an Anthropic organization that has a signed BAA and zero
-data retention (ZDR) enabled.
+An always-on PHI guardrail for Claude Code, plus a covered lane for the
+work that has to touch protected health information.
 
-Nothing the delegate reads or writes comes back to the orchestrator
-except a PHI-scanned handoff summary, `git diff --stat`, and a scan
-verdict for the committed diff. You never have to log out of your
-subscription to do PHI work.
+Your everyday Claude Code session runs on a consumer subscription login
+that is not covered by a BAA. phi-delegate is a Claude Code plugin with
+three parts:
+
+- **The guardrail mod** (always on): function hooks inside the session
+  that scan what you type and what tools return, block reads of delegate
+  artifacts and commands that reach known PHI sources, and give the model
+  a `delegate` tool instead. It reports class names and counts, never the
+  matched text.
+- **The covered lane** (the `phi-delegate` skill and `scripts/`): anything
+  that could touch PHI runs in a separate, headless `claude -p` process
+  authenticated with an API key from an Anthropic organization that has a
+  signed BAA and zero data retention (ZDR) enabled. Nothing it reads or
+  writes comes back except a PHI-scanned handoff summary, `git diff
+  --stat`, and a scan verdict for the committed diff.
+- **The guard hook** (fallback): `scripts/guard-hook.sh`, a PreToolUse
+  settings hook that blocks reads of delegate artifacts on clients where
+  mods do not run.
+
+You never have to log out of your subscription to do PHI work. The mod is
+new; everything that worked before still works the same way, with or
+without it (see [Without the plugin](#without-the-plugin)).
 
 ## How isolation works
 
@@ -23,14 +36,24 @@ subscription to do PHI work.
 | Egress | `--strict-mcp-config` disables every MCP server; `WebSearch` and `WebFetch` are disallowed; telemetry and error reporting are off. |
 | Model | Default `claude-opus-5`. Fable and Mythos class models are refused because they are not offered under ZDR. |
 | Output | The raw transcript goes to a temp file, is checked for permission denials, and is securely deleted when the run ends (opt in to keeping it with `PHI_DELEGATE_KEEP_LOG=1`, mode 600, humans only). The delegate writes a handoff that is moved out of the tree and scanned by `phi-scan.sh`: clean handoffs are shown, flagged ones are deleted unread. |
-| Residue | Each run gets its own `CLAUDE_CONFIG_DIR` subdirectory, deleted afterwards, so no history or debug logs survive. `collect.sh --merge` and `--reject` delete the handoff, the spec (including its Private input), any kept log, and the run records. After a task closes, the only PHI-adjacent thing left is the git branch itself, which is what the human reviews. |
-| Orchestrator | `SKILL.md` forbids reading delegate artifacts. `install.sh --with-guard` adds a PreToolUse hook that mechanically blocks Read/Bash/Grep/Glob calls referencing `.phi-worktrees/`, handoff copies, or `--full-diff`. |
-| Specs | Specs must be PHI-free. A `## Private input` section is filled by the human in their own editor; the orchestrator never reads it back. |
+| Residue | Each run gets its own `CLAUDE_CONFIG_DIR` subdirectory, deleted afterwards, so no history or debug logs survive. `collect.sh --merge` and `--reject` delete the handoff, the spec, its private input sidecar, any kept log, and the run records. After a task closes, the only PHI-adjacent thing left is the git branch itself, which is what the human reviews. |
+| Orchestrator | `SKILL.md` forbids reading delegate artifacts. The plugin registers `guard-hook.sh` as a PreToolUse hook (or `install.sh --with-guard` adds it to user settings), which mechanically blocks Read/Bash/Grep/Glob calls referencing `.phi-worktrees/`, handoff copies, `*.private.md` sidecars, or `--full-diff`. |
+| Mod | Function hooks in the orchestrator session: a `tool.call` guard (the rules above, plus `collect.sh --merge`), a PHI-source command deny, prompt interception, output scrubbing for Bash, Read, Grep, and MCP results, the `delegate` tool, and a review pane whose buttons are the only way to merge. Every blocking hook fails closed. It stands down inside the delegate, which `phi-claude.sh` marks with `PHI_DELEGATE_SESSION=1`. |
+| Specs | Specs must be PHI-free. Identifiers go in a private input sidecar the mod writes from a prompt you stage, or in a `## Private input` section you fill in your own editor; the orchestrator never reads either back. |
 
-`phi-scan.sh` is a tripwire (SSN, phone, email, date, MRN and DOB
-keywords, addresses, long digit runs). It reports counts only. It is not a
-substitute for the delegate following its handoff instructions or for the
-human reviewing the full diff.
+## The scanner
+
+`scripts/phi-patterns.tsv` is the one pattern source. `phi-scan.sh` reads
+it with `grep -E`, and the mod reads a generated TypeScript copy
+(`scripts/gen-mod-data.sh` writes it; bats and CI fail when it drifts). A
+parity test holds the two to identical per-class counts on every fixture
+in `tests/fixtures/`.
+
+The classes are SSN, phone, email, date, and ISO date shapes, street
+addresses, long digit runs (the identifier classes), and DOB, identifier,
+patient-name, and clinical keywords (the keyword classes). Output is counts
+only. It is a tripwire, not a substitute for the delegate following its
+handoff instructions or for the human reviewing the full diff.
 
 Precision options: `--profile diff` drops git metadata lines (`diff --git`,
 `index`, file headers, hunk headers, and `Author:`, `Signed-off-by:`,
@@ -42,31 +65,43 @@ PHI: it skips the `dob-keyword`, `identifier-keyword`, and
 `clinical-keyword` classes and scans every other class; `delegate.sh` and
 `collect.sh` never use it, so handoff scans keep the strict default.
 `--only` and `--skip` take class names (comma separated, repeatable) and
-compose with either profile; `--allow <file>` reads an
-allowlist, conventionally `.phi-allow`, one regex per line, applied to
-matched lines. The allowlist is never loaded implicitly. The synthetic
-corpus in `tests/fixtures/` measures it: 7 clean fixtures pass, 8 dirty
-fixtures flagged (`bats tests/phi_scan_fixtures.bats`). Prose about the
-scanner itself trips the keyword classes under the default profile; use
-`--profile prose` for it.
+compose with either profile; `--allow <file>` reads an allowlist,
+conventionally `.phi-allow`, one regex per line, applied to matched lines.
+The allowlist is never loaded implicitly. The synthetic corpus in
+`tests/fixtures/` measures it: 7 clean fixtures pass, 8 dirty fixtures
+flagged (`bats tests/phi_scan_fixtures.bats`). Prose about the scanner
+itself trips the keyword classes under the default profile; use `--profile
+prose` for it.
 
 ## Requirements
 
-- Claude Code CLI 2.1 or newer
+- Claude Code CLI 2.1.287 or newer for the mod (2.1 or newer for the skill
+  alone)
 - An Anthropic API key from an organization with a BAA and ZDR enabled
-- `git`, `bash`, `curl`; `gh` for `--pr`; `node` for `install.sh --with-guard`
+- `git`, `bash`, `curl`; `gh` for PRs; `node` for `install.sh --with-guard`
 
 ## Install
 
+The plugin is the documented path. This repo is its own marketplace:
+
 ```bash
 git clone https://github.com/brianleach/phi-delegate ~/code/phi-delegate
-cd ~/code/phi-delegate
-./install.sh --with-guard
-cp .env.example .env    # then edit
+claude plugin marketplace add ~/code/phi-delegate
+claude plugin install phi-delegate@phi-delegate
+cd ~/code/phi-delegate && cp .env.example .env    # then edit
 scripts/check-env.sh
 ```
 
-`.env` (gitignored):
+Or, at the prompt of a terminal session:
+
+```
+/plugin install phi-delegate --marketplace brianleach/phi-delegate
+```
+
+Because the marketplace is a local folder listing the plugin at `./`, the
+plugin is read in place: pull the repo and run `/reload-plugins`.
+
+`.env` (gitignored, at this repo's root):
 
 ```
 PHI_DELEGATE_API_KEY=sk-ant-...
@@ -79,59 +114,182 @@ PHI_DELEGATE_ZDR_ATTESTED=1
 that proves a key belongs to a ZDR org, so the operator confirms it in the
 Console and attests. Runs refuse to start without it.
 
+### Options
+
+Set with `/plugin configure phi-delegate@phi-delegate`, the `/config`
+rows, or `claude plugin install --config key=value`:
+
+| Option | Default | What it does |
+|---|---|---|
+| `prompt_keyword_classes` | `false` | Also scan prompts and tool output for the keyword classes. Off because talking about schemas trips them. |
+| `allowlist_file` | empty | A file of extended regexes, one per line, applied to matched lines (for example your company email domain). |
+| `phi_sources` | `snowsql`, `psql` against a `*PROD*` variable | JavaScript regexes for Bash commands that reach PHI. A repo adds its own in a `.phi-sources` file at its root, same format. |
+| `scrub_tool_output` | `true` | Replace flagged tool results with a counts-only notice. |
+
+### Without the plugin
+
+The skill-only install still works and is unchanged:
+
+```bash
+./install.sh               # symlink the skill into ~/.claude/skills
+./install.sh --with-guard  # also add guard-hook.sh to ~/.claude/settings.json
+```
+
+Without the mod there is no prompt interception, output scrubbing,
+`delegate` tool, or review pane. The skill drives `delegate.sh` and
+`collect.sh` through Bash, and you approve merges in the conversation, as
+before. Do not combine the symlink with the plugin: the skill would load
+twice.
+
 ## Usage
 
 In any repo, tell Claude Code "this touches PHI, delegate it" (or invoke
-`/phi-delegate`). Claude will:
+the `phi-delegate` skill). Claude will:
 
 1. run `scripts/check-env.sh`
-2. write a PHI-free spec to `.phi-tasks/<nn>-<slug>.md`, leaving a
-   `## Private input` section for you when an identifier is needed
-3. run `scripts/delegate.sh <spec> --pr`
+2. write a PHI-free spec to `.phi-tasks/<nn>-<slug>.md`
+3. call the `delegate` tool on it (or, without the mod, run
+   `scripts/delegate.sh <spec> --pr`)
 4. show you the diff stat, scan verdicts, and the clean handoff
-5. wait for you to review the full diff (on the PR, or
-   `scripts/collect.sh <name> --full-diff` in your own terminal) and
-   approve before `scripts/collect.sh <name> --merge`
+5. leave the decision to you: with the mod, a review pane opens (reopen it
+   with `/phi-review`) with Merge, Reject, and Open PR buttons that run
+   `collect.sh`. The model cannot press them, and the mod blocks it from
+   running `collect.sh --merge` itself. Review the full diff on the PR, or
+   with `scripts/collect.sh <name> --full-diff` in your own terminal, first.
+
+### Private input
+
+When the task needs an identifier, type it in a prompt. The mod flags it
+and asks:
+
+- **Stage as private input**: asks which task it is for, writes the prompt
+  to `.phi-tasks/<name>.private.md` (mode 600), and sends the model only a
+  note that private input is staged for `<name>`. `delegate.sh` appends the
+  sidecar to the delegate's copy of the spec as its `## Private input`
+  section; merge or reject deletes it.
+- **Send anyway (no PHI)**: for a false positive, such as a format example.
+- **Cancel**: the prompt is dropped.
+
+A dismissed question drops the prompt. Messages nobody typed (background
+task notifications, peers) that match are held back without asking.
+Without the mod, leave a `## Private input` section in the spec and fill
+it in your own editor.
+
+### Interactive mode
 
 To watch and approve each step yourself instead, ask for interactive mode.
 Claude runs `scripts/interactive.sh <spec>`, which prints a command; you
 run it in your own terminal and get the same isolated session with
-permission prompts. The handoff lands at `.phi-handoff.md` in the repo,
+permission prompts. A staged sidecar is named to that session as the
+spec's Private input. The handoff lands at `.phi-handoff.md` in the repo,
 unscanned, for you to read (`scripts/phi-scan.sh .phi-handoff.md` first)
 and delete.
 
+### Cleanup
+
 Nothing PHI-bearing is left behind: the transcript and the delegate's
 session state are deleted when the run ends, and merge or reject deletes
-the spec and the handoff. Secure deletion is best effort (`shred` or
-`rm -P`); on APFS and SSDs full-disk encryption is the real control.
+the spec, its sidecar, and the handoff. Secure deletion is best effort
+(`shred` or `rm -P`); on APFS and SSDs full-disk encryption is the real
+control.
 
 Runs that end abnormally, and interactive sessions whose handoff was
 never deleted, do leave residue. `scripts/cleanup.sh` finds it (stray
-`.phi-handoff*.md`, `.phi-tasks/`, `.phi-worktrees/`, `phi/*` branches,
-delegate session state) and lists it by name; `--apply` deletes it,
-`--all` sweeps every repo under `~/code`, `--branches` also drops merged
-`phi/*` branches, and `--sessions` empties the delegate config dir. A
-branch counts as merged when it is an ancestor of HEAD or when `gh`
-reports a merged PR for it, so squash-merged delegate PRs qualify.
-Unmerged branches, and branches whose PR is open or was closed without
-merging, are never deleted.
+`.phi-handoff*.md`, `.phi-tasks/` and the sidecars in it,
+`.phi-worktrees/`, `phi/*` branches, delegate session state) and lists it
+by name; `--apply` deletes it, `--all` sweeps every repo under `~/code`,
+`--branches` also drops merged `phi/*` branches, and `--sessions` empties
+the delegate config dir. A branch counts as merged when it is an ancestor
+of HEAD or when `gh` reports a merged PR for it, so squash-merged delegate
+PRs qualify. Unmerged branches, and branches whose PR is open or was
+closed without merging, are never deleted.
+
+## Organization deployment
+
+To put the guardrail on every machine, deploy it as an organization mod.
+Have device management copy this repo to the same absolute path on every
+machine (writable only by administrators), then add managed settings:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "phi-delegate": {
+      "source": { "source": "directory", "path": "/opt/phi-delegate" }
+    }
+  },
+  "enabledPlugins": { "phi-delegate@phi-delegate": true },
+  "prependPlugins": ["phi-delegate@phi-delegate", "sec-default@builtin"],
+  "pluginConfigs": {
+    "phi-delegate@phi-delegate": {
+      "options": { "prompt_keyword_classes": false, "allowlist_file": "/opt/phi-delegate-allow" }
+    }
+  },
+  "disableSideloadFlags": true
+}
+```
+
+- The marketplace must be a directory listing the plugin by relative path
+  so the plugin is read in place and counts as the organization's. A copy
+  from a GitHub, git, URL, or npm source counts as a user's and is skipped
+  by `prependPlugins`.
+- `prependPlugins` replaces the default, so name `sec-default@builtin` to
+  keep the built-in guard.
+- `disableSideloadFlags` rejects `--plugin-dir` (and `--plugin-url`,
+  `--agents`, `--mcp-config`) so a session cannot be started around the
+  policy that way.
+- Confirm with `claude --debug`: the line for `phi-delegate@phi-delegate`
+  should say `tier prepend`.
+
+Caveats:
+
+- `claude --safe-mode` starts a session with no installed mods, this one
+  included. Only `guard-hook.sh` (a settings hook) still runs there.
+- If the worker that runs installed mods crashes three times, Claude Code
+  unloads every non-built-in mod for that session until `/reload-plugins`
+  or a new session.
+- CLI versions older than 2.1.287 do not load the mod. Mods are on by
+  default from 2.1.286, and 2.1.287 ignores the old early-access
+  `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS` switch.
+- The mod covers Claude Code only (terminal, desktop, IDE). It does not
+  see claude.ai chats, other tools, or programs the session starts
+  outside its tool calls.
+- Managed mods also load inside the covered delegate. The mod and the
+  guard hook stand down there because `phi-claude.sh` exports
+  `PHI_DELEGATE_SESSION=1`. That marker is honor system, not a security
+  boundary: a user who sets it in the orchestrator turns the guardrail off.
 
 ## Compliance notes
 
 This tool reduces the surface through which PHI can reach an uncovered
 session; it does not by itself make a workflow HIPAA compliant. You still
 need the BAA, ZDR enabled on the org, access controls on the databases the
-delegate reaches, and human review of every change. Local artifacts under
-the delegate creates on your machine are deleted after each task, but the
-overwrite is best effort, so FileVault or equivalent disk encryption is
-still required.
+delegate reaches, and human review of every change. The mod is a set of
+heuristics in front of the model, not a sandbox: a pattern it does not
+know passes. Local artifacts the delegate creates on your machine are
+deleted after each task, but the overwrite is best effort, so FileVault
+or equivalent disk encryption is still required.
 
 ## Development
 
 ```bash
 shellcheck scripts/*.sh install.sh tests/helpers.bash
+scripts/gen-mod-data.sh            # after editing phi-patterns.tsv or fixtures
+claude plugin validate .
+claude plugin test .
 bats tests/
+claude --plugin-dir .              # try the mod from this checkout
 ```
+
+## Roadmap
+
+Not built yet, and out of scope for the first version of the mod:
+
+- A reversible pseudonymization vault, so the model can work with stable
+  placeholders that map back to real values only in the covered lane
+- Display masking of flagged text in the transcript (`ui.render`)
+- Heartbeat and audit posting to a central monitoring service
+- A local NER or trained detection sidecar beside the regex classes
+- A network backstop proxy
 
 ## License
 
