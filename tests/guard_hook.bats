@@ -94,3 +94,25 @@ JSON
   run "$HOOK" <"$json"
   [ "$status" -eq 0 ]
 }
+
+@test "recursive grep is blocked only where delegate state exists, unless it excludes it" {
+  local repo="${BATS_TEST_TMPDIR}/repo" json="${BATS_TEST_TMPDIR}/payload.json" c
+  mkdir -p "$repo" && git init -q "$repo"
+  payload() {
+    python3 -c 'import json,sys; print(json.dumps({"cwd":sys.argv[1],"tool_name":"Bash","tool_input":{"command":sys.argv[2]}}, separators=(",", ":")))' "$1" "$2" >"$json"
+  }
+  payload "$repo" 'grep -R -n patient .'
+  run "$HOOK" <"$json"
+  [ "$status" -eq 0 ]
+  mkdir -p "$repo/.phi-tasks"
+  for c in 'grep -R -n patient .' 'grep -rn foo src' 'rg -uu patient'; do
+    payload "$repo" "$c"
+    run "$HOOK" <"$json"
+    [ "$status" -eq 2 ]
+  done
+  for c in 'rg patient' 'git grep -n patient' "grep -rn x . --exclude-dir='.phi-*'"; do
+    payload "$repo" "$c"
+    run "$HOOK" <"$json"
+    [ "$status" -eq 0 ]
+  done
+}

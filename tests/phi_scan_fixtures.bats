@@ -122,6 +122,11 @@ expect_verdict() {
   expect_verdict clean edge-unicode-street.txt
   LC_ALL=en_US.UTF-8 expect_verdict clean edge-unicode-street.txt
 }
+@test "dirty: a merge commit's combined diff is scanned inside its @@@ hunk" {
+  expect_verdict flagged dirty-combined-diff.diff --profile diff
+  [[ "$output" == *"ssn-shaped"* ]]
+  [[ "$output" != *"email-address"* ]]
+}
 @test "clean: real git log -p capture passes under diff profile" {
   expect_verdict clean clean-log-p.diff --profile diff
   expect_verdict flagged clean-log-p.diff

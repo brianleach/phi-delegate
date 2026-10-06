@@ -62,6 +62,27 @@ if printf '%s' "$payload" | grep -q -F '.phi-task'; then
   fi
 fi
 
+# A recursive grep walks into .phi-tasks/ and .phi-worktrees/ without naming
+# them (grep does not skip git-excluded paths), so in a repo that has them
+# it must exclude both; rg is fine unless told to ignore the excludes.
+search_blocked=""
+if printf '%s' "$payload" | grep -q '"tool_name" *: *"Bash"' && [ -n "$cwd" ]; then
+  repo_root="$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$cwd")"
+  if [ -d "$repo_root/.phi-tasks" ] || [ -d "$repo_root/.phi-worktrees" ]; then
+    search_command="$(printf '%s' "$payload" | sed -n -E 's/.*"command" *: *"(([^"\\]|\\.)*)".*/\1/p' | head -n 1 \
+      | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g')"
+    recursive_grep='(^|[[:space:];&|(])(e|f)?grep[[:space:]]+([^;&|]*[[:space:]])?(-[A-Za-z]*[rR][A-Za-z]*|--recursive|--dereference-recursive|-d[[:space:]]*recurse|--directories=recurse)([^A-Za-z0-9_]|$)'
+    unignored_rg='(^|[[:space:];&|(])rg[[:space:]]+([^;&|]*[[:space:]])?(-[A-Za-z]*u[A-Za-z]*|--no-ignore[^[:space:]]*|--hidden)([^A-Za-z0-9_]|$)'
+    if printf '%s' "$search_command" | grep -q -E -e "$recursive_grep" \
+      && ! { printf '%s' "$search_command" | grep -q -E -e "--exclude-dir=[\"']?\.phi-(\*|tasks)" \
+        && printf '%s' "$search_command" | grep -q -E -e "--exclude-dir=[\"']?\.phi-(\*|worktrees)"; }; then
+      search_blocked="a recursive grep here would read .phi-tasks/ and .phi-worktrees/, which hold private input and delegate output; use rg, git grep, or the Grep tool (they skip git-excluded paths), or add --exclude-dir=.phi-*"
+    elif printf '%s' "$search_command" | grep -q -E -e "$unignored_rg"; then
+      search_blocked="rg with -u, --no-ignore, or --hidden here would read .phi-tasks/ and .phi-worktrees/; drop that flag"
+    fi
+  fi
+fi
+
 blocked_reason=""
 if printf '%s' "$payload" | grep -q -E '\.phi-worktrees'; then
   blocked_reason=".phi-worktrees/ holds delegate worktrees and raw transcripts that may contain PHI"
@@ -73,6 +94,8 @@ elif printf '%s' "$payload" | grep -q -E '\.private\.md'; then
   blocked_reason="*.private.md sidecars hold private input staged for a delegate"
 elif [ "$tasks_blocked" -eq 1 ]; then
   blocked_reason=".phi-tasks/ holds private input sidecars; from Bash, name it only in a plain run of a phi-delegate script, and write specs with the Write tool"
+elif [ -n "$search_blocked" ]; then
+  blocked_reason="$search_blocked"
 elif printf '%s' "$payload" | grep -q -E '\.phi-delegate/claude'; then
   blocked_reason="the delegate CLAUDE_CONFIG_DIR holds its own session state"
 fi

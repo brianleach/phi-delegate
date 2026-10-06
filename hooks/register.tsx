@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register } from 'claude-code'
 
 import type { PhiDelegateReview } from '../types'
-import { compileSources, guardReason, isSelfRepo, taskName } from './guard'
+import { compileSources, guardReason, isSelfRepo, searchReason, taskName } from './guard'
 import { PATTERNS_TSV } from './patterns.generated'
 import { classNames, describe, parseAllow, parsePatterns, scan } from './scan'
 import type { ScanProfile, ScanResult } from './scan'
@@ -67,6 +67,12 @@ async function repoRoot($: EngineInterface): Promise<string> {
     return git.exitCode === 0 ? git.stdout.trim() : cwd
   })()
   return root
+}
+
+// Whether this repo has delegate state a recursive search would walk into.
+async function holdsQuarantine($: EngineInterface): Promise<boolean> {
+  const repo = await repoRoot($)
+  return (await $.fs.exists(`${repo}/.phi-tasks`)) || (await $.fs.exists(`${repo}/.phi-worktrees`))
 }
 
 async function realPath($: EngineInterface, path: string): Promise<string | undefined> {
@@ -170,7 +176,7 @@ function stringsOf(value: unknown): string[] {
 // counts. Both must hold: a single git log, show, or diff with no <rev>:<path>
 // (which prints a file's raw contents), and output that opens as history.
 const GIT_HISTORY = /^\s*git\s+(?:-C\s+[^\s:]+\s+)?(?:log|show|diff)\b[^;&|`$<>()\n:]*$/
-const HISTORY_OUTPUT = /^(?:commit [0-9a-f]{7,}|diff --git )/
+const HISTORY_OUTPUT = /^(?:commit [0-9a-f]{7,}|diff --(?:git|cc|combined) )/
 
 function isScrubbed(tool: string): boolean {
   return config.scrubOutput && SCRUB_TOOLS.test(tool) && tool !== DELEGATE_TOOL
@@ -219,7 +225,9 @@ export const register: Register = (on, options) => {
     selfRepo ??= realPath($, $.plugin.root)
     const cwd = await realPath($, await $.session.cwd())
     if (isSelfRepo(await selfRepo, cwd, payload, e.tool === 'Bash')) return next(e)
-    const reason = guardReason(payload, e.tool === 'Bash' ? e.command : undefined, String(e.tool))
+    const reason =
+      guardReason(payload, e.tool === 'Bash' ? e.command : undefined, String(e.tool)) ??
+      (e.tool === 'Bash' && (await holdsQuarantine($)) ? searchReason(e.command) : undefined)
     if (reason === undefined) return next(e)
     await flag($)
     return {

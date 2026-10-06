@@ -8,7 +8,8 @@
 #          drop: line dropped under --profile diff (git metadata), only
 #                outside a hunk; every line inside a hunk is content
 #          hunk: "start" and "end" mark a hunk for --profile diff: it runs
-#                from an @@ line to the next diff or commit header
+#                from an @@ (or a merge diff's @@@) line to the next diff
+#                or commit header
 #   name   the class or rule name
 #   flags  "i" for case-insensitive, else "-"
 #   tags   comma list: identifier (value-shaped, scanned in prompts by
@@ -19,9 +20,9 @@
 #   repl   mask rows only: the replacement, \1 for the first group
 mask	arn	-	-	arn:aws:[A-Za-z0-9:/_.-]+	[ARN]
 mask	ecr	-	-	(^|[^0-9])[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com	\1[ECR]
-hunk	start	-	-	^@@[ ]
-hunk	end	-	-	^(diff --git |commit [0-9a-f]+( |$))
-drop	git-headers	i	-	^(diff --git |index [0-9a-f]+\.\.[0-9a-f]+|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@ )
+hunk	start	-	-	^@@@*[ ]
+hunk	end	-	-	^(diff --(git|cc|combined) |commit [0-9a-f]+( |$))
+drop	git-headers	i	-	^(diff --(git|cc|combined) |index [0-9a-f,]+\.\.[0-9a-f]+|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@@* )
 drop	git-trailers	i	-	^( {4})?(Author|Signed-off-by|Co-Authored-By):
 class	ssn-shaped	-	identifier	\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b
 class	phone-shaped	-	identifier	(\(|\b)[0-9]{3}(\) ?|[-. ])[0-9]{3}[-. ][0-9]{4}\b

@@ -81,6 +81,16 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
   {
+    name: "dirty-combined-diff.diff",
+    text: "commit 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b\nMerge: 1111111 2222222\nAuthor: Sample Dev <sample.dev@example.invalid>\nDate:   Mon Sep 21 14:02:11 2026 -0500\n\n    Merge branch feature\n\ndiff --cc notes.md\nindex 1111111,2222222..3333333\n--- a/notes.md\n+++ b/notes.md\n@@@ -1,2 -1,2 +1,3 @@@\n  Release notes\n    Author: 987-65-4320\n+ Reviewed\n",
+    counts: {
+      default: {"ssn-shaped": 1, "email-address": 1},
+      diff: {"ssn-shaped": 1},
+      prose: {"ssn-shaped": 1, "email-address": 1},
+      diffAllow: {"ssn-shaped": 1},
+    },
+  },
+  {
     name: "dirty-contact.txt",
     text: "Callback 555-555-0142, lives at 100 Sample Street.\n",
     counts: {

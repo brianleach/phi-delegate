@@ -1,0 +1,15 @@
+commit 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b
+Merge: 1111111 2222222
+Author: Sample Dev <sample.dev@example.invalid>
+Date:   Mon Sep 21 14:02:11 2026 -0500
+
+    Merge branch feature
+
+diff --cc notes.md
+index 1111111,2222222..3333333
+--- a/notes.md
++++ b/notes.md
+@@@ -1,2 -1,2 +1,3 @@@
+  Release notes
+    Author: 987-65-4320
++ Reviewed

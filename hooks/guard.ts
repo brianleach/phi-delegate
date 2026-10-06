@@ -82,3 +82,23 @@ export const taskName = (spec: string, name?: string): string => {
   const base = name ?? (spec.split('/').pop() ?? '').replace(/\.md$/, '')
   return base.replace(/[^a-zA-Z0-9._-]/g, '-').replace(/^-+|-+$/g, '')
 }
+
+// A recursive grep walks into .phi-tasks/ and .phi-worktrees/ without
+// naming them (git-excluded paths are not skipped by grep), so in a repo
+// that has them it must exclude both. rg, git grep, and the Grep tool honor
+// the git excludes, unless rg is told not to.
+const RECURSIVE_GREP = /(?:^|[\s;&|(])(?:e|f)?grep\s+(?:[^;&|]*\s)?(?:-[A-Za-z]*[rR][A-Za-z]*|--recursive|--dereference-recursive|-d\s*recurse|--directories=recurse)\b/
+const UNIGNORED_RG = /(?:^|[\s;&|(])rg\s+(?:[^;&|]*\s)?(?:-[A-Za-z]*u[A-Za-z]*|--no-ignore\S*|--hidden)\b/
+const EXCLUDES_BOTH = (command: string) =>
+  /--exclude-dir=["']?\.phi-(?:\*|tasks\b)/.test(command) &&
+  /--exclude-dir=["']?\.phi-(?:\*|worktrees\b)/.test(command)
+
+export const searchReason = (command: string): string | undefined => {
+  if (RECURSIVE_GREP.test(command) && !EXCLUDES_BOTH(command)) {
+    return 'a recursive grep here would read .phi-tasks/ and .phi-worktrees/, which hold private input and delegate output; use rg, git grep, or the Grep tool (they skip git-excluded paths), or add --exclude-dir=\'.phi-*\''
+  }
+  if (UNIGNORED_RG.test(command)) {
+    return 'rg with -u, --no-ignore, or --hidden here would read .phi-tasks/ and .phi-worktrees/; drop that flag'
+  }
+  return undefined
+}

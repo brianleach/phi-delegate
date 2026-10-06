@@ -11,6 +11,7 @@ type Stubs = {
   toolResult?: unknown
   failPrepare?: boolean
   unreadable?: string[]
+  quarantine?: boolean
   files?: Record<string, string>
   failCwd?: boolean
   failRun?: boolean
@@ -36,7 +37,9 @@ const stub = (on: any, s: Stubs = {}): Seen => {
   on('session.cwd', () => (s.failCwd === true ? { deny: 'no cwd' } : { value: ROOT }))
   on('fs.stat', ($: unknown, e: any) => ({ value: { kind: 'directory', size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
   on('fs.exists', ($: unknown, e: any) => ({
-    value: [...Object.keys(s.files ?? {}), ...(s.unreadable ?? [])].some(path => e.path.endsWith(path)),
+    value:
+      [...Object.keys(s.files ?? {}), ...(s.unreadable ?? [])].some(path => e.path.endsWith(path)) ||
+      (s.quarantine === true && /\/\.phi-(?:tasks|worktrees)$/.test(e.path)),
   }))
   on('fs.read', ($: unknown, e: any) => {
     if ((s.unreadable ?? []).some(path => e.path.endsWith(path))) return { deny: 'EACCES' }
@@ -415,4 +418,31 @@ test('bracket globs and prefix tricks on .phi-tasks are denied; quoted args are 
   for (const command of ['scripts/delegate.sh ".phi-tasks/01-fix visit.md" --pr', "scripts/delegate.sh '.phi-tasks/01-fix visit.md'"]) {
     expect(await $.tool.call({ tool: 'Bash', command })).toMatchObject({ result: 'ok' })
   }
+})
+
+// Regressions from the third PR review
+
+test('a merge commit shown as a combined diff is scanned inside its hunks', async ($, on) => {
+  stub(on, {
+    toolText: `commit 1a2b3c4d5e6f\nMerge: 1111111 2222222\nAuthor: Sample Dev <sample.dev@example.invalid>\n\ndiff --cc notes.md\n@@@ -1,2 -1,2 +1,2 @@@\n    Author: ${SSN}\n`,
+  })
+  const out: any = await $.tool.call({ tool: 'Bash', command: 'git show HEAD' })
+  expect(out.result.stdout).toMatch(/ssn-shaped 1/)
+  expect(out.result.stdout).not.toMatch(/email-address/)
+})
+
+test('in a repo with delegate state, recursive grep must exclude it', async ($, on) => {
+  const seen = stub(on, { quarantine: true })
+  for (const command of ['grep -R -n patient .', 'grep -rn foo src', 'rg -uu patient', 'ls && grep -nr x .']) {
+    expect((await $.tool.call({ tool: 'Bash', command })).deny ?? '').toMatch(/would read \.phi-tasks/)
+  }
+  expect(seen.ranTools).toEqual([])
+  for (const command of ['rg patient', 'git grep -n patient', 'grep -n x notes.txt', "grep -rn x . --exclude-dir='.phi-*'"]) {
+    expect(await $.tool.call({ tool: 'Bash', command })).toMatchObject({ result: 'ok' })
+  }
+})
+
+test('in a repo with no delegate state, recursive grep is untouched', async ($, on) => {
+  stub(on)
+  expect(await $.tool.call({ tool: 'Bash', command: 'grep -R -n patient .' })).toMatchObject({ result: 'ok' })
 })
