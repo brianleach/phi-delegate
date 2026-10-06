@@ -69,7 +69,7 @@ PHI: it skips the `dob-keyword`, `identifier-keyword`, and
 compose with either profile; `--allow <file>` reads an allowlist,
 conventionally `.phi-allow`, one regex per line, applied to matched lines.
 The allowlist is never loaded implicitly. The synthetic corpus in
-`tests/fixtures/` measures it: 7 clean fixtures pass, 10 dirty fixtures
+`tests/fixtures/` measures it: 7 clean fixtures pass, 11 dirty fixtures
 flagged, and `edge-` fixtures pin behavior the script and the mod must
 share (`bats tests/phi_scan_fixtures.bats`). The scanner runs in the C
 locale, so results are the same on macOS, Linux, and in the mod; non-ASCII
@@ -273,7 +273,8 @@ know passes.
 
 The guards match what a tool call says, not what it touches. They stop the
 mistakes that matter in practice (reading a delegate's worktree, globbing
-the private input folder, running a known PHI source), but the session
+the private input folder, a recursive grep that walks into it, running a
+known PHI source), but the session
 runs as you, with your file access, so a command spelled in a way the
 guards do not recognize can still reach those files. The output scrubber
 is the backstop for identifier-shaped values that come back; names and
