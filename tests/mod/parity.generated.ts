@@ -171,6 +171,16 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
   {
+    name: "edge-nbsp.txt",
+    text: "patient name : Sample\nsafe 987-65-4320\n",
+    counts: {
+      default: {"ssn-shaped": 1},
+      diff: {"ssn-shaped": 1},
+      prose: {"ssn-shaped": 1},
+      diffAllow: {"ssn-shaped": 1},
+    },
+  },
+  {
     name: "edge-unicode-street.txt",
     text: "Shipping label: 12 Kelvin Road\n",
     counts: {
@@ -181,4 +191,4 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
 ]
-export const ALLOW_ENTRY = "@example\\.invalid"
+export const ALLOW_ENTRIES = ["@example\\.invalid","safe\\s"]

@@ -42,6 +42,8 @@ PHI-scanned handoff summary and file names.
   - `cleanup.sh` - sweep leftover handoffs, specs, worktrees, run
     records, merged phi/* branches, and session state; dry run by
     default, names and counts only
+  - `prepare-sidecar.sh` - creates an empty private input sidecar for the
+    mod (folder 700, file 600, symlinks refused, git-excluded)
   - `phi-scan.sh` - heuristic PHI tripwire; reports counts, never text
   - `phi-patterns.tsv` - the one pattern source for phi-scan.sh and the mod
   - `gen-mod-data.sh` - writes the TypeScript copies of the patterns and
@@ -76,6 +78,9 @@ PHI-scanned handoff summary and file names.
 - Private input staged by the mod lives in `.phi-tasks/<name>.private.md`
   (mode 600) and is deleted with its spec; nothing but the task name
   reaches the model.
+- The guards are a deny-list on what a call says, so they stop accidents,
+  not a session working around them. Keep README's statement of that
+  limit accurate when changing them.
 - No em dashes anywhere in generated docs. Use hyphens, commas, or colons.
 - Never write API keys, PHI, or absolute home paths into committed files.
 - Runtime state lives under `.phi-worktrees/` (worktrees, clean

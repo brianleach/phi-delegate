@@ -70,7 +70,7 @@ compose with either profile; `--allow <file>` reads an allowlist,
 conventionally `.phi-allow`, one regex per line, applied to matched lines.
 The allowlist is never loaded implicitly. The synthetic corpus in
 `tests/fixtures/` measures it: 7 clean fixtures pass, 10 dirty fixtures
-flagged, and an `edge-` fixture pins behavior the script and the mod must
+flagged, and `edge-` fixtures pin behavior the script and the mod must
 share (`bats tests/phi_scan_fixtures.bats`). The scanner runs in the C
 locale, so results are the same on macOS, Linux, and in the mod; non-ASCII
 letters are not case-folded. Prose about the scanner
@@ -269,7 +269,17 @@ session; it does not by itself make a workflow HIPAA compliant. You still
 need the BAA, ZDR enabled on the org, access controls on the databases the
 delegate reaches, and human review of every change. The mod is a set of
 heuristics in front of the model, not a sandbox: a pattern it does not
-know passes. Local artifacts the delegate creates on your machine are
+know passes.
+
+The guards match what a tool call says, not what it touches. They stop the
+mistakes that matter in practice (reading a delegate's worktree, globbing
+the private input folder, running a known PHI source), but the session
+runs as you, with your file access, so a command spelled in a way the
+guards do not recognize can still reach those files. The output scrubber
+is the backstop for identifier-shaped values that come back; names and
+free text with no identifier shape can pass it. Treat the guardrail as
+protection against accidents, not against a session trying to get around
+it. Local artifacts the delegate creates on your machine are
 deleted after each task, but the overwrite is best effort, so FileVault
 or equivalent disk encryption is still required.
 

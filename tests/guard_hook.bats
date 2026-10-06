@@ -72,3 +72,25 @@ setup() { HOOK="$(phi_repo_root)/scripts/guard-hook.sh"; }
   run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\".phi-tasks/01-x.md\",\"content\":\"spec\"}}' | '$HOOK'"
   [ "$status" -eq 0 ]
 }
+
+@test "bracket globs and prefix tricks on .phi-tasks are blocked" {
+  local c
+  for c in 'cat .phi-task[s]/*' 'cat<.phi-tasks/01.pri*;scripts/delegate.sh' 'scripts/delegate.sh $(cat .phi-tasks/x)'; do
+    run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$c\"}}' | '$HOOK'"
+    [ "$status" -eq 2 ]
+  done
+}
+
+@test "quoted script arguments naming .phi-tasks are allowed" {
+  local json="${BATS_TEST_TMPDIR}/payload.json"
+  cat >"$json" <<'JSON'
+{"cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"scripts/delegate.sh \".phi-tasks/01-fix visit.md\" --pr"}}
+JSON
+  run "$HOOK" <"$json"
+  [ "$status" -eq 0 ]
+  cat >"$json" <<'JSON'
+{"cwd":"/tmp","tool_name":"Bash","tool_input":{"command":"scripts/delegate.sh '.phi-tasks/01-fix visit.md'"}}
+JSON
+  run "$HOOK" <"$json"
+  [ "$status" -eq 0 ]
+}

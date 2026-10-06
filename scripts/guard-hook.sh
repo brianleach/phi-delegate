@@ -40,16 +40,21 @@ if ! printf '%s' "$payload" | grep -q '"tool_name" *: *"Bash"' \
 fi
 
 # .phi-tasks/ may be named from Bash only in one plain run of a
-# phi-delegate script or a mkdir of the folder: a glob, pipe, or chain can
-# read a sidecar without naming it. Grep may not search it at all. The
-# command is pulled out of the JSON; if that fails, it is not plain.
+# phi-delegate script (a path of plain characters, then plain or quoted
+# arguments) or a mkdir of the folder: a glob, redirection, pipe, or chain
+# can read a sidecar without naming it. Grep may not search it at all.
+# ".phi-task" with no s also catches a bracket glob such as .phi-task[s].
+# The command is pulled out of the JSON and unescaped; if that fails, it
+# is not plain.
 tasks_blocked=0
-if printf '%s' "$payload" | grep -q -F '.phi-tasks'; then
+if printf '%s' "$payload" | grep -q -F '.phi-task'; then
   if printf '%s' "$payload" | grep -q '"tool_name" *: *"Grep"'; then
     tasks_blocked=1
   elif printf '%s' "$payload" | grep -q '"tool_name" *: *"Bash"'; then
-    command="$(printf '%s' "$payload" | sed -n -E 's/.*"command" *: *"(([^"\\]|\\.)*)".*/\1/p' | head -n 1)"
-    plain_script='^[[:space:]]*(bash[[:space:]]+)?[^[:space:]]*(delegate|interactive|collect|cleanup)\.sh([[:space:]]+[^][:space:];&|`$<>(){}*?~\\[]+)*[[:space:]]*$'
+    command="$(printf '%s' "$payload" | sed -n -E 's/.*"command" *: *"(([^"\\]|\\.)*)".*/\1/p' | head -n 1 \
+      | sed -e 's/\\"/"/g' -e 's/\\\\/\\/g')"
+    plain_arg="([^][:space:];&|\`\$<>(){}*?~\\'\"[]+|\"[^\"\$\`\\]*\"|'[^']*')"
+    plain_script="^[[:space:]]*(bash[[:space:]]+)?([A-Za-z0-9_./~-]*/)?(delegate|interactive|collect|cleanup)\\.sh([[:space:]]+$plain_arg)*[[:space:]]*\$"
     plain_mkdir='^[[:space:]]*mkdir[[:space:]]+-p[[:space:]]+\.phi-tasks/?[[:space:]]*$'
     if ! printf '%s' "$command" | grep -q -E -e "$plain_script" -e "$plain_mkdir"; then
       tasks_blocked=1

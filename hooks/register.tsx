@@ -144,42 +144,33 @@ async function stagePrivateInput($: EngineInterface, text: string): Promise<stri
     name = `staged-${(await $.clock.now()).toString(36)}`
   }
   const file = `${dir}/${name}.private.md`
-  // $.fs.write takes no mode, so the file is created 600 (its folder 700,
-  // excluded from git as delegate.sh does) before any text lands in it. Any
-  // failure, outside a git repo included, stops the staging.
-  const prepared = await $.process.run(
-    [
-      'sh',
-      '-c',
-      'umask 077 && mkdir -p "$1" && chmod 700 "$1" && touch "$2" && chmod 600 "$2" && ' +
-        'g="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)" && x="$g/info/exclude" && ' +
-        'mkdir -p "$g/info" && for p in .phi-worktrees/ .phi-tasks/; do ' +
-        'grep -qxF "$p" "$x" 2>/dev/null || echo "$p" >>"$x" || exit 1; done',
-      'sh',
-      dir,
-      file,
-    ],
-    { cwd: repo },
-  )
-  if (prepared.exitCode !== 0) throw new Error('could not create the private input sidecar')
+  // $.fs.write takes no mode, so the script creates the file 600 (its folder
+  // 700, refusing symlinks, excluded from git) before any text lands in it.
+  const prepared = await $.process.run([`${$.plugin.root}/scripts/prepare-sidecar.sh`, repo, name], { cwd: repo })
+  if (prepared.exitCode !== 0) throw new Error('could not prepare the private input sidecar')
   const existing = await $.fs.read(file).catch(() => '')
   await $.fs.write(file, existing === '' ? `${text}\n` : `${existing}\n${text}\n`)
   return name
 }
 
-// Every string in a tool's record, for a result with no text: unlike its
-// JSON, a newline inside still separates lines.
+// Every string, number, and key in a tool's record, for a result with no
+// text: unlike its JSON, a newline inside still separates lines.
 function stringsOf(value: unknown): string[] {
   if (typeof value === 'string') return [value]
+  if (typeof value === 'number' || typeof value === 'bigint') return [String(value)]
   if (Array.isArray(value)) return value.flatMap(stringsOf)
-  if (value !== null && typeof value === 'object') return Object.values(value).flatMap(stringsOf)
+  if (value !== null && typeof value === 'object') {
+    return Object.entries(value).flatMap(([key, inner]) => [key, ...stringsOf(inner)])
+  }
   return []
 }
 
-// Git's own output carries author metadata the diff profile drops; any other
-// command's output is scanned whole, so a data line shaped like a trailer
-// still counts. A compound command never gets the diff profile.
-const GIT_HISTORY = /^\s*git\s+(?:-C\s+\S+\s+)?(?:log|show|diff)\b[^;&|`$<>()\n]*$/
+// Git's history output carries author metadata the diff profile drops; all
+// other output is scanned whole, so a data line shaped like a trailer still
+// counts. Both must hold: a single git log, show, or diff with no <rev>:<path>
+// (which prints a file's raw contents), and output that opens as history.
+const GIT_HISTORY = /^\s*git\s+(?:-C\s+[^\s:]+\s+)?(?:log|show|diff)\b[^;&|`$<>()\n:]*$/
+const HISTORY_OUTPUT = /^(?:commit [0-9a-f]{7,}|diff --git )/
 
 function isScrubbed(tool: string): boolean {
   return config.scrubOutput && SCRUB_TOOLS.test(tool) && tool !== DELEGATE_TOOL
@@ -239,7 +230,10 @@ export const register: Register = (on, options) => {
   // Commands that reach a known PHI source go to the delegate instead.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     if (await isCovered($)) return next(e)
-    const repoFile = await $.fs.read(`${await repoRoot($)}/.phi-sources`).catch(() => '')
+    // Only a missing file means no repo patterns; a file that is there but
+    // cannot be read fails the check, and the call is denied.
+    const sourcesFile = `${await repoRoot($)}/.phi-sources`
+    const repoFile = (await $.fs.exists(sourcesFile)) ? await $.fs.read(sourcesFile) : ''
     const { regexes, invalid } = compileSources([...config.phiSources, ...repoFile.split('\n')])
     if (invalid > 0) {
       $.ui.log(`phi-delegate: ${invalid} PHI source pattern(s) do not compile and were skipped`, { to: 'debug' })
@@ -259,7 +253,8 @@ export const register: Register = (on, options) => {
     const ran = await next(e)
     if (ran.deny !== undefined) return ran
     const text = ran.text ?? stringsOf(ran.result).join('\n')
-    const profile = e.tool === 'Bash' && GIT_HISTORY.test(e.command) ? 'diff' : 'default'
+    const isHistory = e.tool === 'Bash' && GIT_HISTORY.test(e.command) && HISTORY_OUTPUT.test(text)
+    const profile = isHistory ? 'diff' : 'default'
     const result = await scanText($, text, profile)
     if (result.total === 0) return ran
     await flag($)

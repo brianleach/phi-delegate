@@ -3,10 +3,14 @@
 // as the fallback for clients where mods do not run.
 
 // The calls that may name .phi-tasks/ from Bash: one plain run of a
-// phi-delegate script, or creating the folder. No globs, pipes, or chains,
-// since any of those can read a sidecar without naming it.
+// phi-delegate script (a path of plain characters, then plain or quoted
+// arguments), or creating the folder. No globs, redirections, pipes, or
+// chains, since any of those can read a sidecar without naming it.
+const PLAIN_ARG = `(?:[^\\s;&|\`$<>(){}*?[\\]~\\\\'"]+|"[^"$\`\\\\]*"|'[^']*')`
 const TASKS_ALLOWED = [
-  /^\s*(?:bash\s+)?\S*\/?(?:delegate|interactive|collect|cleanup)\.sh(?:\s+[^\s;&|`$<>(){}*?[\]~\\]+)*\s*$/,
+  new RegExp(
+    `^\\s*(?:bash\\s+)?(?:[A-Za-z0-9_./~-]*/)?(?:delegate|interactive|collect|cleanup)\\.sh(?:\\s+${PLAIN_ARG})*\\s*$`,
+  ),
   /^\s*mkdir\s+-p\s+\.phi-tasks\/?\s*$/,
 ]
 
@@ -27,7 +31,8 @@ export const guardReason = (
   if (/\.private\.md/.test(payload)) {
     return '*.private.md sidecars hold private input staged for a delegate'
   }
-  if (/\.phi-tasks/.test(payload)) {
+  // .phi-task with no s: a bracket glob (.phi-task[s]) still names it.
+  if (/\.phi-task/.test(payload)) {
     const isPlain = bashCommand !== undefined && TASKS_ALLOWED.some(re => re.test(bashCommand))
     if (tool === 'Grep' || (bashCommand !== undefined && !isPlain)) {
       return '.phi-tasks/ holds private input sidecars; from Bash, name it only in a plain run of a phi-delegate script, and write specs with the Write tool'

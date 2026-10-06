@@ -26,6 +26,29 @@ export type Patterns = {
   hunkEnd?: Rule
 }
 
+// grep -E in the C locale reads \s and \S as ASCII whitespace; JavaScript's
+// also take Unicode spaces such as a no-break space. Outside a bracket
+// expression, spell them as grep reads them so both scanners agree.
+export const toGrepRegex = (source: string): string => {
+  let out = ''
+  let inBracket = false
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i]
+    const after = source[i + 1]
+    if (ch === '\\' && after !== undefined) {
+      if (!inBracket && after === 's') out += '[\\t\\n\\v\\f\\r ]'
+      else if (!inBracket && after === 'S') out += '[^\\t\\n\\v\\f\\r ]'
+      else out += ch + after
+      i += 1
+      continue
+    }
+    if (ch === '[' && !inBracket) inBracket = true
+    else if (ch === ']' && inBracket) inBracket = false
+    out += ch
+  }
+  return out
+}
+
 export const parsePatterns = (tsv: string): Patterns => {
   const patterns: Patterns = { classes: [], masks: [], drops: [] }
   for (const line of tsv.split('\n')) {
@@ -35,7 +58,7 @@ export const parsePatterns = (tsv: string): Patterns => {
     // flag: in JavaScript it would also anchor ^ after a carriage return.
     const rule: Rule = {
       name,
-      regex: new RegExp(regex, `g${flags === 'i' ? 'i' : ''}`),
+      regex: new RegExp(toGrepRegex(regex), `g${flags === 'i' ? 'i' : ''}`),
       tags: tags === '-' || tags === undefined ? [] : tags.split(','),
       repl: (repl ?? '').replace(/\\(\d)/g, '$$$1'),
     }
@@ -64,7 +87,7 @@ export const scan = (p: Patterns, text: string, options: ScanOptions = {}): Scan
   const skip = new Set(options.skip ?? [])
   if (profile === 'prose') for (const name of classNames(p, 'prose-skip')) skip.add(name)
   const only = options.only === undefined ? undefined : new Set(options.only)
-  const allow = (options.allow ?? []).map(entry => new RegExp(entry))
+  const allow = (options.allow ?? []).map(entry => new RegExp(toGrepRegex(entry)))
 
   // grep counts lines; a trailing newline ends the last line, it adds none.
   let lines = text.split('\n')

@@ -10,6 +10,7 @@ type Stubs = {
   toolText?: string
   toolResult?: unknown
   failPrepare?: boolean
+  unreadable?: string[]
   files?: Record<string, string>
   failCwd?: boolean
   failRun?: boolean
@@ -34,7 +35,11 @@ const stub = (on: any, s: Stubs = {}): Seen => {
   mock.clock(on, { now: 1_700_000_000_000 })
   on('session.cwd', () => (s.failCwd === true ? { deny: 'no cwd' } : { value: ROOT }))
   on('fs.stat', ($: unknown, e: any) => ({ value: { kind: 'directory', size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.exists', ($: unknown, e: any) => ({
+    value: [...Object.keys(s.files ?? {}), ...(s.unreadable ?? [])].some(path => e.path.endsWith(path)),
+  }))
   on('fs.read', ($: unknown, e: any) => {
+    if ((s.unreadable ?? []).some(path => e.path.endsWith(path))) return { deny: 'EACCES' }
     const hit = Object.entries(s.files ?? {}).find(([path]) => e.path.endsWith(path))
     return hit === undefined ? { deny: 'ENOENT' } : { value: hit[1] }
   })
@@ -46,7 +51,7 @@ const stub = (on: any, s: Stubs = {}): Seen => {
   on('process.run', ($: unknown, e: any) => {
     seen.runs.push([...e.argv])
     if (s.failRun === true) return { deny: 'cannot start' }
-    if (s.failPrepare === true && e.argv[0] === 'sh') {
+    if (s.failPrepare === true && String(e.argv[0]).endsWith('/scripts/prepare-sidecar.sh')) {
       return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     }
     const stdout = e.argv[0] === 'git' ? `${ROOT}\n` : ''
@@ -214,10 +219,8 @@ test('Stage writes the sidecar and the model reads only the task name', async ($
   expect(seen.writes).toHaveLength(1)
   expect(seen.writes[0]?.path).toMatch(new RegExp(`^${ROOT}/\\.phi-tasks/staged-[a-z0-9]+\\.private\\.md$`))
   expect(seen.writes[0]?.text).toBe(`fix the record for ${SSN}\n`)
-  const prepare = seen.runs.find(argv => argv[0] === 'sh')
-  expect(prepare?.[2]).toContain('chmod 600 "$2"')
-  expect(prepare?.[2]).toContain('--path-format=absolute --git-common-dir')
-  expect(prepare?.[2]).not.toMatch(/;\s*true$/)
+  const prepare = seen.runs.find(argv => String(argv[0]).endsWith('/scripts/prepare-sidecar.sh'))
+  expect(prepare?.slice(1)).toEqual([ROOT, seen.writes[0]?.path.split('/').pop()?.replace(/\.private\.md$/, '')])
 })
 
 test('Cancel at the task question drops the prompt and writes nothing', async ($, on) => {
@@ -378,4 +381,38 @@ test('.phi-tasks is reachable from Bash only through a plain script run', async 
     expect(await $.tool.call({ tool: 'Bash', command })).toMatchObject({ result: 'ok' })
   }
   expect(await $.tool.call({ tool: 'Write', file_path: '.phi-tasks/01-x.md', content: 'spec' })).toMatchObject({ result: 'ok' })
+})
+
+// Regressions from the second PR review
+
+test('git show of a file is scanned whole, not as history', async ($, on) => {
+  stub(on, { toolText: `Author: ${SSN}\n` })
+  const out: any = await $.tool.call({ tool: 'Bash', command: 'git show HEAD:notes.txt' })
+  expect(out.result.stdout).toMatch(/ssn-shaped 1/)
+  const shown: any = await $.tool.call({ tool: 'Bash', command: 'git show HEAD' })
+  expect(shown.result.stdout).toMatch(/ssn-shaped 1/)
+})
+
+test('numbers and keys in a result record are scanned', async ($, on) => {
+  stub(on, { toolResult: { patient_id: 123456789, 'someone@example.invalid': 'active' } })
+  const out: any = await $.tool.call({ tool: 'mcp__db__query', sql: 'select 1' })
+  expect(out.deny).toMatch(/email-address 1/)
+  expect(out.deny).toMatch(/long-digit-run 1/)
+})
+
+test('a .phi-sources file that cannot be read denies the command', async ($, on) => {
+  const seen = stub(on, { unreadable: ['/.phi-sources'] })
+  expect((await $.tool.call({ tool: 'Bash', command: 'mysql -h clinic-prod-db' })).deny).toMatch(/PHI check on this call failed/)
+  expect(seen.ranTools).toEqual([])
+})
+
+test('bracket globs and prefix tricks on .phi-tasks are denied; quoted args are not', async ($, on) => {
+  const seen = stub(on)
+  for (const command of ['cat .phi-task[s]/*', 'cat<.phi-tasks/01.pri*;scripts/delegate.sh', 'scripts/delegate.sh $(cat .phi-tasks/x)']) {
+    expect((await $.tool.call({ tool: 'Bash', command })).deny ?? '').toMatch(/private input sidecars/)
+  }
+  expect(seen.ranTools).toEqual([])
+  for (const command of ['scripts/delegate.sh ".phi-tasks/01-fix visit.md" --pr', "scripts/delegate.sh '.phi-tasks/01-fix visit.md'"]) {
+    expect(await $.tool.call({ tool: 'Bash', command })).toMatchObject({ result: 'ok' })
+  }
 })
