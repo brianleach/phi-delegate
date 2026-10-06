@@ -111,6 +111,16 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
   {
+    name: "dirty-cr-trailer.txt",
+    text: "export row 1\n987-65-4320\rAuthor: fine\n",
+    counts: {
+      default: {"ssn-shaped": 1},
+      diff: {"ssn-shaped": 1},
+      prose: {"ssn-shaped": 1},
+      diffAllow: {"ssn-shaped": 1},
+    },
+  },
+  {
     name: "dirty-dob.txt",
     text: "Patient name: Test Person, date of birth 01/02/1970.\n",
     counts: {
@@ -158,6 +168,16 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
       diff: {"ssn-shaped": 1, "identifier-keyword": 1},
       prose: {"ssn-shaped": 1},
       diffAllow: {"ssn-shaped": 1, "identifier-keyword": 1},
+    },
+  },
+  {
+    name: "edge-unicode-street.txt",
+    text: "Shipping label: 12 Kelvin Road\n",
+    counts: {
+      default: {},
+      diff: {},
+      prose: {},
+      diffAllow: {},
     },
   },
 ]

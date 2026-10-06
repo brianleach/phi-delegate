@@ -27,6 +27,9 @@
 #                   entry is not counted. Blank and # lines are ignored. Never
 #                   loaded implicitly, so a tree cannot allowlist itself.
 set -euo pipefail
+# Byte semantics everywhere, so macOS and Linux grep agree with each other
+# and with the mod's scanner (a UTF-8 locale case-folds some non-ASCII).
+export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATTERNS="$SCRIPT_DIR/phi-patterns.tsv"

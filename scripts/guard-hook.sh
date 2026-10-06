@@ -39,6 +39,24 @@ if ! printf '%s' "$payload" | grep -q '"tool_name" *: *"Bash"' \
   exit 0
 fi
 
+# .phi-tasks/ may be named from Bash only in one plain run of a
+# phi-delegate script or a mkdir of the folder: a glob, pipe, or chain can
+# read a sidecar without naming it. Grep may not search it at all. The
+# command is pulled out of the JSON; if that fails, it is not plain.
+tasks_blocked=0
+if printf '%s' "$payload" | grep -q -F '.phi-tasks'; then
+  if printf '%s' "$payload" | grep -q '"tool_name" *: *"Grep"'; then
+    tasks_blocked=1
+  elif printf '%s' "$payload" | grep -q '"tool_name" *: *"Bash"'; then
+    command="$(printf '%s' "$payload" | sed -n -E 's/.*"command" *: *"(([^"\\]|\\.)*)".*/\1/p' | head -n 1)"
+    plain_script='^[[:space:]]*(bash[[:space:]]+)?[^[:space:]]*(delegate|interactive|collect|cleanup)\.sh([[:space:]]+[^][:space:];&|`$<>(){}*?~\\[]+)*[[:space:]]*$'
+    plain_mkdir='^[[:space:]]*mkdir[[:space:]]+-p[[:space:]]+\.phi-tasks/?[[:space:]]*$'
+    if ! printf '%s' "$command" | grep -q -E -e "$plain_script" -e "$plain_mkdir"; then
+      tasks_blocked=1
+    fi
+  fi
+fi
+
 blocked_reason=""
 if printf '%s' "$payload" | grep -q -E '\.phi-worktrees'; then
   blocked_reason=".phi-worktrees/ holds delegate worktrees and raw transcripts that may contain PHI"
@@ -48,6 +66,8 @@ elif printf '%s' "$payload" | grep -q -E -- '--full-diff'; then
   blocked_reason="collect.sh --full-diff prints delegate output verbatim and is reserved for the human"
 elif printf '%s' "$payload" | grep -q -E '\.private\.md'; then
   blocked_reason="*.private.md sidecars hold private input staged for a delegate"
+elif [ "$tasks_blocked" -eq 1 ]; then
+  blocked_reason=".phi-tasks/ holds private input sidecars; from Bash, name it only in a plain run of a phi-delegate script, and write specs with the Write tool"
 elif printf '%s' "$payload" | grep -q -E '\.phi-delegate/claude'; then
   blocked_reason="the delegate CLAUDE_CONFIG_DIR holds its own session state"
 fi

@@ -2,7 +2,19 @@
 // directly. guardReason mirrors scripts/guard-hook.sh, which stays registered
 // as the fallback for clients where mods do not run.
 
-export const guardReason = (payload: string, bashCommand?: string): string | undefined => {
+// The calls that may name .phi-tasks/ from Bash: one plain run of a
+// phi-delegate script, or creating the folder. No globs, pipes, or chains,
+// since any of those can read a sidecar without naming it.
+const TASKS_ALLOWED = [
+  /^\s*(?:bash\s+)?\S*\/?(?:delegate|interactive|collect|cleanup)\.sh(?:\s+[^\s;&|`$<>(){}*?[\]~\\]+)*\s*$/,
+  /^\s*mkdir\s+-p\s+\.phi-tasks\/?\s*$/,
+]
+
+export const guardReason = (
+  payload: string,
+  bashCommand?: string,
+  tool?: string,
+): string | undefined => {
   if (/\.phi-worktrees/.test(payload)) {
     return '.phi-worktrees/ holds delegate worktrees and raw transcripts that may contain PHI'
   }
@@ -14,6 +26,12 @@ export const guardReason = (payload: string, bashCommand?: string): string | und
   }
   if (/\.private\.md/.test(payload)) {
     return '*.private.md sidecars hold private input staged for a delegate'
+  }
+  if (/\.phi-tasks/.test(payload)) {
+    const isPlain = bashCommand !== undefined && TASKS_ALLOWED.some(re => re.test(bashCommand))
+    if (tool === 'Grep' || (bashCommand !== undefined && !isPlain)) {
+      return '.phi-tasks/ holds private input sidecars; from Bash, name it only in a plain run of a phi-delegate script, and write specs with the Write tool'
+    }
   }
   if (/\.phi-delegate\/claude/.test(payload)) {
     return 'the delegate CLAUDE_CONFIG_DIR holds its own session state'

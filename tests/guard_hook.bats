@@ -51,3 +51,24 @@ setup() { HOOK="$(phi_repo_root)/scripts/guard-hook.sh"; }
   run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$(phi_repo_root)/SKILL.md\",\"new_string\":\".phi-worktrees\"}}' | '$HOOK'"
   [ "$status" -eq 0 ]
 }
+
+@test "reads of .phi-tasks that could reach a sidecar are blocked" {
+  local c
+  for c in 'cat .phi-tasks/*' 'cat .phi-tasks/01-x.pri*' 'ls .phi-tasks' 'scripts/delegate.sh .phi-tasks/01.md; cat .phi-tasks/*'; do
+    run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$c\"}}' | '$HOOK'"
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"private input sidecars"* ]]
+  done
+  run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Grep\",\"tool_input\":{\"pattern\":\"x\",\"path\":\".phi-tasks\"}}' | '$HOOK'"
+  [ "$status" -eq 2 ]
+}
+
+@test "plain script runs, mkdir, and spec writes may still name .phi-tasks" {
+  local c
+  for c in 'scripts/delegate.sh .phi-tasks/01-x.md --pr' 'bash /x/scripts/interactive.sh .phi-tasks/01-x.md --permission-mode acceptEdits' 'mkdir -p .phi-tasks'; do
+    run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$c\"}}' | '$HOOK'"
+    [ "$status" -eq 0 ]
+  done
+  run bash -c "printf '%s' '{\"cwd\":\"/tmp\",\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\".phi-tasks/01-x.md\",\"content\":\"spec\"}}' | '$HOOK'"
+  [ "$status" -eq 0 ]
+}

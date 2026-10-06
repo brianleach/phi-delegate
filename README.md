@@ -69,8 +69,11 @@ PHI: it skips the `dob-keyword`, `identifier-keyword`, and
 compose with either profile; `--allow <file>` reads an allowlist,
 conventionally `.phi-allow`, one regex per line, applied to matched lines.
 The allowlist is never loaded implicitly. The synthetic corpus in
-`tests/fixtures/` measures it: 7 clean fixtures pass, 9 dirty fixtures
-flagged (`bats tests/phi_scan_fixtures.bats`). Prose about the scanner
+`tests/fixtures/` measures it: 7 clean fixtures pass, 10 dirty fixtures
+flagged, and an `edge-` fixture pins behavior the script and the mod must
+share (`bats tests/phi_scan_fixtures.bats`). The scanner runs in the C
+locale, so results are the same on macOS, Linux, and in the mod; non-ASCII
+letters are not case-folded. Prose about the scanner
 itself trips the keyword classes under the default profile; use `--profile
 prose` for it.
 

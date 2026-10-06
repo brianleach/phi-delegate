@@ -8,6 +8,8 @@ type Stubs = {
   answers?: string[]
   env?: Record<string, string>
   toolText?: string
+  toolResult?: unknown
+  failPrepare?: boolean
   files?: Record<string, string>
   failCwd?: boolean
   failRun?: boolean
@@ -44,6 +46,9 @@ const stub = (on: any, s: Stubs = {}): Seen => {
   on('process.run', ($: unknown, e: any) => {
     seen.runs.push([...e.argv])
     if (s.failRun === true) return { deny: 'cannot start' }
+    if (s.failPrepare === true && e.argv[0] === 'sh') {
+      return { value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     const stdout = e.argv[0] === 'git' ? `${ROOT}\n` : ''
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
@@ -71,6 +76,7 @@ const stub = (on: any, s: Stubs = {}): Seen => {
       return answer === undefined ? { deny: 'dismissed' } : { result: { answers: { [question]: answer } } }
     }
     seen.ranTools.push(e.tool)
+    if (s.toolResult !== undefined) return { result: s.toolResult }
     return { result: s.toolText ?? 'ok', text: s.toolText ?? 'ok' }
   })
   return seen
@@ -210,7 +216,8 @@ test('Stage writes the sidecar and the model reads only the task name', async ($
   expect(seen.writes[0]?.text).toBe(`fix the record for ${SSN}\n`)
   const prepare = seen.runs.find(argv => argv[0] === 'sh')
   expect(prepare?.[2]).toContain('chmod 600 "$2"')
-  expect(prepare?.[2]).toContain('info/exclude')
+  expect(prepare?.[2]).toContain('--path-format=absolute --git-common-dir')
+  expect(prepare?.[2]).not.toMatch(/;\s*true$/)
 })
 
 test('Cancel at the task question drops the prompt and writes nothing', async ($, on) => {
@@ -328,4 +335,47 @@ test('Reject runs collect.sh --reject', async ($, on) => {
   await ui.press({ key: 'reject-02-x' })
   expect(seen.runs.filter(argv => argv[0]?.endsWith('/scripts/collect.sh')).map(argv => argv[2])).toEqual(['--reject'])
   expect(await ui.find({ type: 'Text', text: /02-x · rejected/ })).toBeDefined()
+})
+
+// Regressions from the PR review
+
+test('staging fails closed when the sidecar cannot be prepared or excluded', async ($, on) => {
+  const seen = stub(on, { answers: ['Stage as private input', 'New task'], failPrepare: true })
+  expect(((await submit($, `fix the record for ${SSN}`)) as any).drop).toMatch(/PHI check failed/)
+  expect(seen.writes).toEqual([])
+  expect(seen.submitted).toEqual([])
+})
+
+test('a trailer-shaped line in ordinary command output is scanned', async ($, on) => {
+  stub(on, { toolText: `Author: ${SSN}\n` })
+  const out: any = await $.tool.call({ tool: 'Bash', command: 'cat notes.txt' })
+  expect(out.result.stdout).toMatch(/ssn-shaped 1/)
+})
+
+test('git history output keeps the diff profile, so author emails do not count', async ($, on) => {
+  stub(on, { toolText: 'commit 1a2b3c4\nAuthor: Sample Dev <sample.dev@example.invalid>\n' })
+  const out: any = await $.tool.call({ tool: 'Bash', command: 'git log -1' })
+  expect(out.result).toContain('sample.dev@example.invalid')
+  const chained: any = await $.tool.call({ tool: 'Bash', command: 'git log -1 && cat notes.txt' })
+  expect(chained.result.stdout).toMatch(/email-address 1/)
+})
+
+test('every string in a result record is scanned, newlines intact', async ($, on) => {
+  stub(on, { toolResult: { stdout: `\n${SSN}\n`, stderr: '' } })
+  const out: any = await $.tool.call({ tool: 'Bash', command: 'cat export.csv' })
+  expect(out.result.stdout).toMatch(/ssn-shaped/)
+  expect(JSON.stringify(out)).not.toContain('987-65')
+})
+
+test('.phi-tasks is reachable from Bash only through a plain script run', async ($, on) => {
+  const seen = stub(on)
+  for (const command of ['cat .phi-tasks/*', 'cat .phi-tasks/01-x.pri*', 'ls .phi-tasks', 'scripts/delegate.sh .phi-tasks/01.md; cat .phi-tasks/*']) {
+    expect((await $.tool.call({ tool: 'Bash', command })).deny ?? '').toMatch(/private input sidecars/)
+  }
+  expect((await $.tool.call({ tool: 'Grep', pattern: 'x', path: '.phi-tasks' } as any)).deny ?? '').toMatch(/private input sidecars/)
+  expect(seen.ranTools).toEqual([])
+  for (const command of ['scripts/delegate.sh .phi-tasks/01-x.md --pr', 'mkdir -p .phi-tasks']) {
+    expect(await $.tool.call({ tool: 'Bash', command })).toMatchObject({ result: 'ok' })
+  }
+  expect(await $.tool.call({ tool: 'Write', file_path: '.phi-tasks/01-x.md', content: 'spec' })).toMatchObject({ result: 'ok' })
 })

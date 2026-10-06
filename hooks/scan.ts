@@ -31,10 +31,11 @@ export const parsePatterns = (tsv: string): Patterns => {
   for (const line of tsv.split('\n')) {
     const [kind, name, flags, tags, regex, repl] = line.split('\t')
     if (name === undefined || regex === undefined) continue
-    // sed and grep -E read each line alone; "m" gives ^ and $ the same reach.
+    // Applied to one line at a time, as sed and grep -E read them. No "m"
+    // flag: in JavaScript it would also anchor ^ after a carriage return.
     const rule: Rule = {
       name,
-      regex: new RegExp(regex, `gm${flags === 'i' ? 'i' : ''}`),
+      regex: new RegExp(regex, `g${flags === 'i' ? 'i' : ''}`),
       tags: tags === '-' || tags === undefined ? [] : tags.split(','),
       repl: (repl ?? '').replace(/\\(\d)/g, '$$$1'),
     }
@@ -65,12 +66,10 @@ export const scan = (p: Patterns, text: string, options: ScanOptions = {}): Scan
   const only = options.only === undefined ? undefined : new Set(options.only)
   const allow = (options.allow ?? []).map(entry => new RegExp(entry))
 
-  let masked = text
-  for (const mask of p.masks) masked = masked.replace(mask.regex, mask.repl)
-
   // grep counts lines; a trailing newline ends the last line, it adds none.
-  let lines = masked.split('\n')
+  let lines = text.split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  lines = lines.map(line => p.masks.reduce((out, mask) => out.replace(mask.regex, mask.repl), line))
   if (profile === 'diff') {
     // As the script does: drop rules reach only lines outside a hunk, which
     // runs from an @@ line to the next diff --git or commit header.

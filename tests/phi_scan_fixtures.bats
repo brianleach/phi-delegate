@@ -114,6 +114,14 @@ expect_verdict() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"email-address                1 line(s)"* ]]
 }
+@test "dirty: a carriage return does not end a line, so the line still scans" {
+  expect_verdict flagged dirty-cr-trailer.txt --profile diff
+  [[ "$output" == *"ssn-shaped"* ]]
+}
+@test "edge: non-ASCII case folding is the same on every platform (C locale)" {
+  expect_verdict clean edge-unicode-street.txt
+  LC_ALL=en_US.UTF-8 expect_verdict clean edge-unicode-street.txt
+}
 @test "clean: real git log -p capture passes under diff profile" {
   expect_verdict clean clean-log-p.diff --profile diff
   expect_verdict flagged clean-log-p.diff

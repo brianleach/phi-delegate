@@ -145,14 +145,16 @@ async function stagePrivateInput($: EngineInterface, text: string): Promise<stri
   }
   const file = `${dir}/${name}.private.md`
   // $.fs.write takes no mode, so the file is created 600 (its folder 700,
-  // excluded from git as delegate.sh does) before any text lands in it.
+  // excluded from git as delegate.sh does) before any text lands in it. Any
+  // failure, outside a git repo included, stops the staging.
   const prepared = await $.process.run(
     [
       'sh',
       '-c',
       'umask 077 && mkdir -p "$1" && chmod 700 "$1" && touch "$2" && chmod 600 "$2" && ' +
-        'x="$(git -C "$1" rev-parse --git-common-dir 2>/dev/null)/info/exclude" && ' +
-        'for p in .phi-worktrees/ .phi-tasks/; do grep -qxF "$p" "$x" 2>/dev/null || echo "$p" >>"$x"; done; true',
+        'g="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)" && x="$g/info/exclude" && ' +
+        'mkdir -p "$g/info" && for p in .phi-worktrees/ .phi-tasks/; do ' +
+        'grep -qxF "$p" "$x" 2>/dev/null || echo "$p" >>"$x" || exit 1; done',
       'sh',
       dir,
       file,
@@ -164,6 +166,20 @@ async function stagePrivateInput($: EngineInterface, text: string): Promise<stri
   await $.fs.write(file, existing === '' ? `${text}\n` : `${existing}\n${text}\n`)
   return name
 }
+
+// Every string in a tool's record, for a result with no text: unlike its
+// JSON, a newline inside still separates lines.
+function stringsOf(value: unknown): string[] {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(stringsOf)
+  if (value !== null && typeof value === 'object') return Object.values(value).flatMap(stringsOf)
+  return []
+}
+
+// Git's own output carries author metadata the diff profile drops; any other
+// command's output is scanned whole, so a data line shaped like a trailer
+// still counts. A compound command never gets the diff profile.
+const GIT_HISTORY = /^\s*git\s+(?:-C\s+\S+\s+)?(?:log|show|diff)\b[^;&|`$<>()\n]*$/
 
 function isScrubbed(tool: string): boolean {
   return config.scrubOutput && SCRUB_TOOLS.test(tool) && tool !== DELEGATE_TOOL
@@ -212,7 +228,7 @@ export const register: Register = (on, options) => {
     selfRepo ??= realPath($, $.plugin.root)
     const cwd = await realPath($, await $.session.cwd())
     if (isSelfRepo(await selfRepo, cwd, payload, e.tool === 'Bash')) return next(e)
-    const reason = guardReason(payload, e.tool === 'Bash' ? e.command : undefined)
+    const reason = guardReason(payload, e.tool === 'Bash' ? e.command : undefined, String(e.tool))
     if (reason === undefined) return next(e)
     await flag($)
     return {
@@ -242,8 +258,9 @@ export const register: Register = (on, options) => {
     if (!isScrubbed(tool) || (await isCovered($))) return next(e)
     const ran = await next(e)
     if (ran.deny !== undefined) return ran
-    const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : JSON.stringify(ran.result ?? ''))
-    const result = await scanText($, text, 'diff')
+    const text = ran.text ?? stringsOf(ran.result).join('\n')
+    const profile = e.tool === 'Bash' && GIT_HISTORY.test(e.command) ? 'diff' : 'default'
+    const result = await scanText($, text, profile)
     if (result.total === 0) return ran
     await flag($)
     const notice = `phi-delegate: ${tool} output withheld, it matched PHI patterns (${describe(result)}). ${DELEGATE_HINT}`
@@ -308,7 +325,7 @@ export const register: Register = (on, options) => {
       text: `phi-delegate: I staged private input for task ${name} (my prompt was withheld because it matched PHI patterns). Write the PHI-free spec at .phi-tasks/${name}.md and run it with the delegate tool; the delegate receives the private input as the spec's Private input section. Never read .phi-tasks/${name}.private.md.`,
       context: [],
     })
-  }).catch(($, e, next) => (next.called ? next(e) : { drop: 'phi-delegate: the PHI check failed, so the prompt was not sent.' }))
+  }).catch(() => ({ drop: 'phi-delegate: the PHI check failed, so the prompt was not sent.' }))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Code } = $.ui.resolve(e)
