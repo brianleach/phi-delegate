@@ -99,6 +99,21 @@ expect_verdict() {
     [ "$status" -eq 0 ]
   done
 }
+@test "dirty: a 3-space Author: context line inside a hunk is scanned under diff profile" {
+  # One leading space plus three is four, the trailer shape; inside a hunk
+  # it is content, so the email in it counts while the commit header's do not.
+  expect_verdict flagged dirty-hunk-author.diff --profile diff
+  [[ "$output" == *"email-address                1 line(s)"* ]]
+  expect_verdict flagged dirty-hunk-author.diff
+  [[ "$output" == *"email-address                3 line(s)"* ]]
+}
+@test "a hunk ends at the next commit header, so later trailers drop again" {
+  run "$SCAN" --profile diff --only email-address <<<"$(printf '%s\n' \
+    '@@ -1 +1 @@' '    Author: in.hunk@example.org' \
+    'commit 1a2b3c4' '    Signed-off-by: trailer@example.org')"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"email-address                1 line(s)"* ]]
+}
 @test "clean: real git log -p capture passes under diff profile" {
   expect_verdict clean clean-log-p.diff --profile diff
   expect_verdict flagged clean-log-p.diff

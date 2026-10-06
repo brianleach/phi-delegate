@@ -58,8 +58,9 @@ handoff instructions or for the human reviewing the full diff.
 Precision options: `--profile diff` drops git metadata lines (`diff --git`,
 `index`, file headers, hunk headers, and `Author:`, `Signed-off-by:`,
 `Co-Authored-By:` at column 0 or the 4-space commit message indent) so
-author emails stop counting; diff content lines (`+`, `-`, one-space
-context) always scan, even when their content looks like metadata.
+author emails stop counting. Only lines outside a hunk are dropped: from
+an `@@` line to the next `diff --git` or `commit` header every line is
+content and scans, even when it looks like metadata.
 `--profile prose` is for a human scanning documentation that talks about
 PHI: it skips the `dob-keyword`, `identifier-keyword`, and
 `clinical-keyword` classes and scans every other class; `delegate.sh` and
@@ -68,7 +69,7 @@ PHI: it skips the `dob-keyword`, `identifier-keyword`, and
 compose with either profile; `--allow <file>` reads an allowlist,
 conventionally `.phi-allow`, one regex per line, applied to matched lines.
 The allowlist is never loaded implicitly. The synthetic corpus in
-`tests/fixtures/` measures it: 7 clean fixtures pass, 8 dirty fixtures
+`tests/fixtures/` measures it: 7 clean fixtures pass, 9 dirty fixtures
 flagged (`bats tests/phi_scan_fixtures.bats`). Prose about the scanner
 itself trips the keyword classes under the default profile; use `--profile
 prose` for it.

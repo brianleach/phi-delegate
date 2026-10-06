@@ -18,7 +18,13 @@ export type ScanResult = { total: number; counts: ScanCount[] }
 
 type Rule = { name: string; regex: RegExp; tags: string[]; repl: string }
 
-export type Patterns = { classes: Rule[]; masks: Rule[]; drops: Rule[] }
+export type Patterns = {
+  classes: Rule[]
+  masks: Rule[]
+  drops: Rule[]
+  hunkStart?: Rule
+  hunkEnd?: Rule
+}
 
 export const parsePatterns = (tsv: string): Patterns => {
   const patterns: Patterns = { classes: [], masks: [], drops: [] }
@@ -35,6 +41,8 @@ export const parsePatterns = (tsv: string): Patterns => {
     if (kind === 'class') patterns.classes.push(rule)
     else if (kind === 'mask') patterns.masks.push(rule)
     else if (kind === 'drop') patterns.drops.push(rule)
+    else if (kind === 'hunk' && name === 'start') patterns.hunkStart = rule
+    else if (kind === 'hunk' && name === 'end') patterns.hunkEnd = rule
   }
   return patterns
 }
@@ -64,7 +72,17 @@ export const scan = (p: Patterns, text: string, options: ScanOptions = {}): Scan
   let lines = masked.split('\n')
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
   if (profile === 'diff') {
-    lines = lines.filter(line => !p.drops.some(drop => testLine(drop.regex, line)))
+    // As the script does: drop rules reach only lines outside a hunk, which
+    // runs from an @@ line to the next diff --git or commit header.
+    const { hunkStart, hunkEnd } = p
+    if (hunkStart === undefined || hunkEnd === undefined) throw new Error('pattern file has no hunk rows')
+    let inHunk = false
+    lines = lines.filter(line => {
+      if (testLine(hunkEnd.regex, line)) inHunk = false
+      if (testLine(hunkStart.regex, line)) inHunk = true
+      else if (inHunk) return true
+      return !p.drops.some(drop => testLine(drop.regex, line))
+    })
   }
 
   const counts: ScanCount[] = []

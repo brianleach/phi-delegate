@@ -121,6 +121,16 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
   {
+    name: "dirty-hunk-author.diff",
+    text: "commit 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b\nAuthor: Sample Dev <sample.dev@example.invalid>\nDate:   Mon Sep 21 14:02:11 2026 -0500\n\n    Quote the release notes header\n\n    Signed-off-by: Sample Dev <sample.dev@example.invalid>\n\ndiff --git a/NOTES.md b/NOTES.md\nindex 3e4fa1c..9b0d2e7 100644\n--- a/NOTES.md\n+++ b/NOTES.md\n@@ -1,3 +1,4 @@\n Release notes\n    Author: pat.doe@example.org\n+Reviewed for release\n done\n",
+    counts: {
+      default: {"email-address": 3},
+      diff: {"email-address": 1},
+      prose: {"email-address": 3},
+      diffAllow: {"email-address": 1},
+    },
+  },
+  {
     name: "dirty-phone-paren.txt",
     text: "Callback (555) 555-0142 after the visit.\n",
     counts: {
