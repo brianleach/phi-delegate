@@ -27,11 +27,12 @@ type Seen = {
   runs: string[][]
   ranTools: string[]
   opened: string[]
+  statuses: (string | undefined)[]
 }
 
 // Every $ call the mod makes in these tests, answered in Claude Code's place.
 const stub = (on: any, s: Stubs = {}): Seen => {
-  const seen: Seen = { asked: [], writes: [], submitted: [], runs: [], ranTools: [], opened: [] }
+  const seen: Seen = { asked: [], writes: [], submitted: [], runs: [], ranTools: [], opened: [], statuses: [] }
   const answers = [...(s.answers ?? [])]
   if (s.failEnv === true) on('env.get', () => ({ deny: 'unavailable' }))
   else mock.env(on, s.env ?? {})
@@ -67,7 +68,11 @@ const stub = (on: any, s: Stubs = {}): Seen => {
     for (const text of s.spawnText ?? []) yield { stream: 'stdout', text }
     return { value: { code: 0, signal: null } }
   })
-  for (const name of ['ui.status', 'ui.log', 'ui.toast', 'tool.register', 'command.register']) {
+  on('ui.status', ($: unknown, e: any) => {
+    seen.statuses.push(e.text)
+    return { value: undefined }
+  })
+  for (const name of ['ui.log', 'ui.toast', 'tool.register', 'command.register']) {
     on(name, () => ({ value: undefined }))
   }
   on('ui.open', ($: unknown, e: any) => {
@@ -145,14 +150,14 @@ test('the PHI source check fails closed', async ($, on) => {
 
 // Output scrubbing
 
-test('a flagged Bash result is replaced by a counts-only record', async ($, on) => {
+test('a flagged Bash result is replaced by a counts-only record', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, { toolText: `row 1 ${SSN}` })
   const out: any = await $.tool.call({ tool: 'Bash', command: 'cat export.csv' })
   expect(out.result.stdout).toMatch(/output withheld.*ssn-shaped 1/)
   expect(JSON.stringify(out)).not.toContain('987-65')
 })
 
-test('flagged Read, Grep, and MCP results become a deny; clean ones pass', async ($, on) => {
+test('flagged Read, Grep, and MCP results become a deny; clean ones pass', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, { toolText: `email someone@example.invalid` })
   for (const input of [
     { tool: 'Read', file_path: 'notes.txt' },
@@ -175,14 +180,14 @@ test('scrubbing can be turned off', { options: { scrub_tool_output: false } }, a
   expect(await $.tool.call({ tool: 'Read', file_path: 'notes.txt' })).toMatchObject({ result: `ssn ${SSN}` })
 })
 
-test('an allowlist entry grep and JavaScript read differently is left out, never loosening', { options: { allowlist_file: '/etc/allow' } }, async ($, on) => {
+test('an allowlist entry grep and JavaScript read differently is left out, never loosening', { options: { scrub_scope: 'all', allowlist_file: '/etc/allow' } }, async ($, on) => {
   stub(on, { toolText: `ssn ${SSN}`, files: { '/etc/allow': '(unclosed\n[[:punct:]]\n' } })
   const out: any = await $.tool.call({ tool: 'Read', file_path: 'notes.txt' })
   expect(out.deny).toMatch(/ssn-shaped 1/)
   expect(JSON.stringify(out)).not.toContain('987-65')
 })
 
-test('the scrubber fails closed when it cannot run', async ($, on) => {
+test('the scrubber fails closed when it cannot run', { options: { scrub_scope: 'all' } }, async ($, on) => {
   const seen = stub(on, { failEnv: true, toolText: `ssn ${SSN}` })
   const out: any = await $.tool.call({ tool: 'mcp__db__query', sql: 'select 1' })
   expect(out.deny).toMatch(/PHI check on this call failed/)
@@ -362,13 +367,13 @@ test('staging fails closed when the sidecar cannot be prepared or excluded', asy
   expect(seen.submitted).toEqual([])
 })
 
-test('a trailer-shaped line in ordinary command output is scanned', async ($, on) => {
+test('a trailer-shaped line in ordinary command output is scanned', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, { toolText: `Author: ${SSN}\n` })
   const out: any = await $.tool.call({ tool: 'Bash', command: 'cat notes.txt' })
   expect(out.result.stdout).toMatch(/ssn-shaped 1/)
 })
 
-test('git history output keeps the diff profile, so author emails do not count', async ($, on) => {
+test('git history output keeps the diff profile, so author emails do not count', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, { toolText: 'commit 1a2b3c4\nAuthor: Sample Dev <sample.dev@example.invalid>\n' })
   const out: any = await $.tool.call({ tool: 'Bash', command: 'git log -1' })
   expect(out.result).toContain('sample.dev@example.invalid')
@@ -376,7 +381,7 @@ test('git history output keeps the diff profile, so author emails do not count',
   expect(chained.result.stdout).toMatch(/email-address 1/)
 })
 
-test('every string in a result record is scanned, newlines intact', async ($, on) => {
+test('every string in a result record is scanned, newlines intact', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, { toolResult: { stdout: `\n${SSN}\n`, stderr: '' } })
   const out: any = await $.tool.call({ tool: 'Bash', command: 'cat export.csv' })
   expect(out.result.stdout).toMatch(/ssn-shaped/)
@@ -398,7 +403,7 @@ test('.phi-tasks is reachable from Bash only through a plain script run', async 
 
 // Regressions from the second PR review
 
-test('git show of a file is scanned whole, not as history', async ($, on) => {
+test('git show of a file is scanned whole, not as history', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, { toolText: `Author: ${SSN}\n` })
   const out: any = await $.tool.call({ tool: 'Bash', command: 'git show HEAD:notes.txt' })
   expect(out.result.stdout).toMatch(/ssn-shaped 1/)
@@ -406,7 +411,7 @@ test('git show of a file is scanned whole, not as history', async ($, on) => {
   expect(shown.result.stdout).toMatch(/ssn-shaped 1/)
 })
 
-test('numbers and keys in a result record are scanned', async ($, on) => {
+test('numbers and keys in a result record are scanned', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, { toolResult: { patient_id: 123456789, 'someone@example.invalid': 'active' } })
   const out: any = await $.tool.call({ tool: 'mcp__db__query', sql: 'select 1' })
   expect(out.deny).toMatch(/email-address 1/)
@@ -432,7 +437,7 @@ test('bracket globs and prefix tricks on .phi-tasks are denied; quoted args are 
 
 // Regressions from the third PR review
 
-test('a merge commit shown as a combined diff is scanned inside its hunks', async ($, on) => {
+test('a merge commit shown as a combined diff is scanned inside its hunks', { options: { scrub_scope: 'all' } }, async ($, on) => {
   stub(on, {
     toolText: `commit 1a2b3c4d5e6f\nMerge: 1111111 2222222\nAuthor: Sample Dev <sample.dev@example.invalid>\n\ndiff --cc notes.md\n@@@ -1,2 -1,2 +1,2 @@@\n    Author: ${SSN}\n`,
   })
@@ -532,4 +537,110 @@ test('PHI_DELEGATE_GUARDRAIL=off turns it off where auto would be on', async ($,
 test('inside the covered delegate it stays off even when forced on', async ($, on) => {
   stub(on, { env: { PHI_DELEGATE_SESSION: '1', PHI_DELEGATE_GUARDRAIL: 'on' } })
   expect(await isGuarded($)).toBe(false)
+})
+
+// Scrub scope: data by default, from the CI-triage feedback
+
+test('data scope leaves gh, git, cat, and browser tools alone', async ($, on) => {
+  stub(on, { toolText: 'run 37660736649 at 2026-10-07 and someone@example.invalid' })
+  for (const input of [
+    { tool: 'Bash', command: 'gh run view 37660736649 --json jobs' },
+    { tool: 'Bash', command: 'git show HEAD:e2e/login.yaml' },
+    { tool: 'Bash', command: 'cat notes/memory.md' },
+    { tool: 'Read', file_path: 'notes/memory.md' },
+    { tool: 'mcp__claude-in-chrome__tabs_context_mcp' },
+  ] as any[]) {
+    expect(await $.tool.call(input)).toMatchObject({ text: 'run 37660736649 at 2026-10-07 and someone@example.invalid' })
+  }
+})
+
+test('data scope scrubs data commands, data files, data tools, and background output', async ($, on) => {
+  stub(on, { toolText: `ssn ${SSN}` })
+  expect(((await $.tool.call({ tool: 'Bash', command: 'psql "$DB" -c "select 1"' })) as any).result.stdout).toMatch(/withheld/)
+  expect(((await $.tool.call({ tool: 'Bash', command: 'bin/rails runner "puts 1"' })) as any).result.stdout).toMatch(/withheld/)
+  expect(((await $.tool.call({ tool: 'Read', file_path: 'exports/visits.CSV' })) as any).deny).toMatch(/withheld/)
+  expect(((await $.tool.call({ tool: 'mcp__sentry__search_issues', query: 'x' } as any)) as any).deny).toMatch(/withheld/)
+  expect(((await $.tool.call({ tool: 'BashOutput', bash_id: 'b1' } as any)) as any).deny).toMatch(/withheld/)
+})
+
+test('the scope lists are configurable', { options: { scrub_commands: ['\\bmy-export\\b'], scrub_tools: [], scrub_files: [] } }, async ($, on) => {
+  stub(on, { toolText: `ssn ${SSN}` })
+  expect(((await $.tool.call({ tool: 'Bash', command: 'my-export --today' })) as any).result.stdout).toMatch(/withheld/)
+  expect(await $.tool.call({ tool: 'Bash', command: 'psql -c "select 1"' })).toMatchObject({ text: `ssn ${SSN}` })
+  expect(await $.tool.call({ tool: 'mcp__sentry__search_issues', query: 'x' } as any)).toMatchObject({ text: `ssn ${SSN}` })
+})
+
+test('a scope rule that does not compile widens the scope to every tool', { options: { scrub_tools: ['(open'] } }, async ($, on) => {
+  stub(on, { toolText: `ssn ${SSN}` })
+  expect(((await $.tool.call({ tool: 'Bash', command: 'cat notes.txt' })) as any).result.stdout).toMatch(/withheld/)
+})
+
+test('a configured PHI source also counts as a data command', { options: { phi_sources: ['\\bclinic-db\\b'] } }, async ($, on) => {
+  stub(on, { toolText: `ssn ${SSN}` })
+  // Denied before it runs, so nothing reaches the scrubber at all.
+  expect(((await $.tool.call({ tool: 'Bash', command: 'clinic-db dump' })) as any).deny).toMatch(/PHI source/)
+})
+
+test('a CI-run prompt with a GitHub URL and a timestamp is not flagged', async ($, on) => {
+  const seen = stub(on)
+  const text = 'Smoke is red, see https://github.com/example-org/example-app/actions/runs/37660736649 (failed 2026-10-07 19:04)'
+  expect(await submit($, text)).toEqual({ text })
+  expect(seen.asked).toEqual([])
+})
+
+test('the inline allowlist joins the allowlist file', { options: { allowlist: ['@example\\.invalid'] } }, async ($, on) => {
+  const seen = stub(on)
+  expect(await submit($, 'ping test.user@example.invalid about the flaky test')).toEqual({ text: 'ping test.user@example.invalid about the flaky test' })
+  await submit($, 'ping someone@elsewhere.example about it')
+  expect(seen.asked).toHaveLength(1)
+})
+
+// /phi-guard
+
+test('/phi-guard off asks the person, and only their yes turns it off', async ($, on) => {
+  const seen = stub(on, { answers: ['Keep it on', 'Turn it off'] })
+  expect((await $.command.run({ command: 'phi-guard', args: 'off' } as any)).text).toMatch(/kept on/)
+  expect(await isGuarded($)).toBe(true)
+  expect((await $.command.run({ command: 'phi-guard', args: 'off' } as any)).text).toMatch(/off for this session/)
+  expect(await isGuarded($)).toBe(false)
+  expect(seen.asked).toHaveLength(2)
+  expect((await $.command.run({ command: 'phi-guard', args: 'on' } as any)).text).toMatch(/on for this session/)
+  expect(await isGuarded($)).toBe(true)
+})
+
+test('/phi-guard off with nobody to ask stays on', async ($, on) => {
+  stub(on, { answers: [] })
+  expect((await $.command.run({ command: 'phi-guard', args: 'off' } as any)).text).toMatch(/kept on/)
+  expect(await isGuarded($)).toBe(true)
+})
+
+test('/phi-guard on turns on a skill-only install for the session', async ($, on) => {
+  stub(on, { env: { HOME: '/home/u' }, files: SKILL_LINK })
+  expect(await isGuarded($)).toBe(false)
+  expect((await $.command.run({ command: 'phi-guard', args: '' } as any)).text).toMatch(/skill-only install/)
+  await $.command.run({ command: 'phi-guard', args: 'on' } as any)
+  expect(await isGuarded($)).toBe(true)
+})
+
+const startSession = async ($: any, on: any) => {
+  on('session.start', () => ({ cwd: '/work/repo' }))
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work/repo' })
+}
+
+test('an explicitly off guardrail says so on the status line', { options: { guardrail: 'off' } }, async ($, on) => {
+  const seen = stub(on, { env: { HOME: '/home/u' } })
+  await startSession($, on)
+  expect(seen.statuses).toEqual(['PHI shield off'])
+})
+
+test('an auto-off skill-only install shows no status line', async ($, on) => {
+  const seen = stub(on, { env: { HOME: '/home/u' }, files: SKILL_LINK })
+  await startSession($, on)
+  expect(seen.statuses).toEqual([])
+})
+
+test('an active guardrail shows the shield on', async ($, on) => {
+  const seen = stub(on, { env: { HOME: '/home/u' } })
+  await startSession($, on)
+  expect(seen.statuses).toEqual(['PHI shield on · 0 flagged'])
 })

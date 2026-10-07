@@ -38,7 +38,7 @@ without it (see [Without the plugin](#without-the-plugin)).
 | Output | The raw transcript goes to a temp file, is checked for permission denials, and is securely deleted when the run ends (opt in to keeping it with `PHI_DELEGATE_KEEP_LOG=1`, mode 600, humans only). The delegate writes a handoff that is moved out of the tree and scanned by `phi-scan.sh`: clean handoffs are shown, flagged ones are deleted unread. |
 | Residue | Each run gets its own `CLAUDE_CONFIG_DIR` subdirectory, deleted afterwards, so no history or debug logs survive. `collect.sh --merge` and `--reject` delete the handoff, the spec, its private input sidecar, any kept log, and the run records. After a task closes, the only PHI-adjacent thing left is the git branch itself, which is what the human reviews. |
 | Orchestrator | `SKILL.md` forbids reading delegate artifacts. The plugin registers `guard-hook.sh` as a PreToolUse hook (or `install.sh --with-guard` adds it to user settings), which mechanically blocks Read/Bash/Grep/Glob calls referencing `.phi-worktrees/`, handoff copies, `*.private.md` sidecars, or `--full-diff`. |
-| Mod | Function hooks in the orchestrator session: a `tool.call` guard (the rules above, plus `collect.sh --merge`), a PHI-source command deny, prompt interception, output scrubbing for Bash, Read, Grep, and MCP results, the `delegate` tool, and a review pane whose buttons are the only way to merge. Every blocking hook fails closed. It stands down inside the delegate, which `phi-claude.sh` marks with `PHI_DELEGATE_SESSION=1`. |
+| Mod | Function hooks in the orchestrator session: a `tool.call` guard (the rules above, plus `collect.sh --merge`), a PHI-source command deny, prompt interception, output scrubbing for the commands and tools that can reach records, the `delegate` tool, and a review pane whose buttons are the only way to merge. Every blocking hook fails closed. It stands down inside the delegate, which `phi-claude.sh` marks with `PHI_DELEGATE_SESSION=1`. |
 | Specs | Specs must be PHI-free. Identifiers go in a private input sidecar the mod writes from a prompt you stage, or in a `## Private input` section you fill in your own editor; the orchestrator never reads either back. |
 
 ## The scanner
@@ -120,16 +120,22 @@ Console and attests. Runs refuse to start without it.
 
 ### Options
 
-Set with `/plugin configure phi-delegate@phi-delegate`, the `/config`
-rows, or `claude plugin install --config key=value`:
+Set with the `/config` rows (a change there reloads the mod at once), `/plugin
+configure phi-delegate@phi-delegate`, or `claude plugin install --config
+key=value` (the shell commands take effect in the next session):
 
 | Option | Default | What it does |
 |---|---|---|
 | `guardrail` | `auto` | `auto` turns the mod on, except for a skill-only `install.sh` setup (a `phi-delegate` symlink in `~/.claude/skills`), where it stays off until you choose `on`. `off` turns it off anywhere. The `PHI_DELEGATE_GUARDRAIL=on` or `off` environment variable overrides it. The covered delegate always stands down. |
 | `prompt_keyword_classes` | `false` | Also scan prompts and tool output for the keyword classes. Off because talking about schemas trips them. |
 | `allowlist_file` | empty | A file of extended regexes, one per line, applied to matched lines (for example your company email domain). |
+| `allowlist` | none | The same, as a list in the plugin's options, added to the file's entries. |
 | `phi_sources` | `snowsql`, `psql` against a `*PROD*` variable | JavaScript regexes for Bash commands that reach PHI. A repo adds its own in a `.phi-sources` file at its root, same format. A pattern that does not compile, or a `.phi-sources` that cannot be read, blocks Bash until it is fixed. |
 | `scrub_tool_output` | `true` | Replace flagged tool results with a counts-only notice. |
+| `scrub_scope` | `data` | `data` scrubs only output that can carry records: Bash commands matching `scrub_commands` or `phi_sources`, Read of files matching `scrub_files`, tools matching `scrub_tools`, and background command output. Ordinary work (`gh`, `git`, reading repo files, browser tools) is not scrubbed. `all` scrubs every Bash, Read, Grep, and MCP result. A list entry that does not compile widens the scope to `all`. |
+| `scrub_commands` | DB clients, `rails c`/`runner`, `kubectl exec`/`logs`, `aws ecs execute-command`/`logs`, `docker exec`/`logs`, `heroku run`, `curl`/`wget`, log CLIs | Regexes for data commands. |
+| `scrub_tools` | MCP tools for Sentry, Datadog, and SQL or warehouse databases | Regexes for tool names. |
+| `scrub_files` | `.csv`, `.tsv`, `.log`, `.sql`, `.dump`, `.jsonl`, `.xlsx`, `.parquet`, `.hl7`, `.dcm` and similar | Regexes for data files read with Read. |
 
 ### Without the plugin
 
@@ -170,6 +176,21 @@ the `phi-delegate` skill). Claude will:
    `collect.sh`. The model cannot press them, and the mod blocks it from
    running `collect.sh --merge` itself. Review the full diff on the PR, or
    with `scripts/collect.sh <name> --full-diff` in your own terminal, first.
+
+### Status and the session switch
+
+The status line under the prompt reads `PHI shield on · N flagged` while the
+guardrail is active, and `PHI shield off` when you turned it off on purpose.
+A skill-only install that never opted in shows nothing.
+
+`/phi-guard` shows the state; `/phi-guard on` and `/phi-guard off` change it
+for the rest of the session. Turning it off asks you in a dialog first, so a
+model that runs the command cannot switch the guardrail off by itself.
+
+The scanner masks GitHub URLs (run and job IDs are long digit runs) and
+timestamps (a date in 2000 or later with a time other than midnight) before
+it scans. A date of birth stored as a datetime prints as midnight, and a
+19xx date is never masked, so both still count.
 
 ### Private input
 
@@ -289,8 +310,10 @@ the private input folder, a recursive grep that walks into it, running a
 known PHI source), but the session
 runs as you, with your file access, so a command spelled in a way the
 guards do not recognize can still reach those files. The output scrubber
-is the backstop for identifier-shaped values that come back; names and
-free text with no identifier shape can pass it. Treat the guardrail as
+is the backstop for identifier-shaped values that come back from data
+commands and tools (all tools with `scrub_scope: all`); output from a data
+path it does not know, and names or free text with no identifier shape,
+can pass it. Treat the guardrail as
 protection against accidents, not against a session trying to get around
 it. Local artifacts the delegate creates on your machine are
 deleted after each task, but the overwrite is best effort, so FileVault

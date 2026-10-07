@@ -2,17 +2,29 @@
   "name": "phi-delegate",
   "version": "0.2.0",
   "description": "Always-on PHI guardrail for Claude Code plus a covered BAA/ZDR delegate lane",
-  "author": { "name": "phi-delegate contributors" },
+  "author": {
+    "name": "phi-delegate contributors"
+  },
   "repository": "https://github.com/brianleach/phi-delegate",
   "license": "MIT",
-  "keywords": ["hipaa", "phi", "baa", "zdr", "guardrail"],
+  "keywords": [
+    "hipaa",
+    "phi",
+    "baa",
+    "zdr",
+    "guardrail"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "guardrail": {
       "type": "string",
       "title": "Guardrail",
       "description": "auto: on, except for a skill-only install.sh setup (a phi-delegate symlink in the skills folder), where it stays off until you choose on. The PHI_DELEGATE_GUARDRAIL=on|off environment variable overrides this.",
-      "options": ["auto", "on", "off"],
+      "options": [
+        "auto",
+        "on",
+        "off"
+      ],
       "default": "auto"
     },
     "prompt_keyword_classes": {
@@ -27,18 +39,72 @@
       "description": "Optional path to a file of extended regexes, one per line, applied to matched lines (for example your company email domain). Empty for none.",
       "default": ""
     },
+    "allowlist": {
+      "type": "string",
+      "multiple": true,
+      "title": "Allowlist",
+      "description": "Extended regexes, one per entry, added to the allowlist file's (for example your company email domain). A matched line that also matches an entry is not counted.",
+      "default": []
+    },
     "phi_sources": {
       "type": "string",
       "multiple": true,
       "title": "PHI source command patterns",
       "description": "JavaScript regexes matched against Bash commands. A match is denied with an instruction to delegate. A repo can add more in a .phi-sources file at its root.",
-      "default": ["\\bsnowsql\\b", "\\bpsql\\b[^|;&]*\\$\\{?[A-Z0-9_]*PROD[A-Z0-9_]*"]
+      "default": [
+        "\\bsnowsql\\b",
+        "\\bpsql\\b[^|;&]*\\$\\{?[A-Z0-9_]*PROD[A-Z0-9_]*"
+      ]
     },
     "scrub_tool_output": {
       "type": "boolean",
       "title": "Scrub tool output",
-      "description": "Replace flagged Bash, Read, Grep, and MCP results with a counts-only notice.",
+      "description": "Replace flagged tool results with a counts-only notice, for the tools scrub_scope names.",
       "default": true
+    },
+    "scrub_scope": {
+      "type": "string",
+      "title": "Scrub scope",
+      "description": "data: scrub only output that can carry records (Bash commands in scrub_commands or phi_sources, Read of files in scrub_files, tools in scrub_tools, background command output). all: every Bash, Read, Grep, and MCP result.",
+      "options": [
+        "data",
+        "all"
+      ],
+      "default": "data"
+    },
+    "scrub_commands": {
+      "type": "string",
+      "multiple": true,
+      "title": "Data commands",
+      "description": "JavaScript regexes for Bash commands whose output is scrubbed under the data scope.",
+      "default": [
+        "\\b(psql|mysql|mariadb|sqlite3|mongo|mongosh|mongoexport|redis-cli|sqlcmd|clickhouse-client|cqlsh|bq|snowsql)\\b",
+        "\\brails\\s+(c|console|r|runner|dbconsole|db)\\b",
+        "\\b(kubectl|oc)\\s+(exec|logs|cp)\\b",
+        "\\baws\\s+(ecs\\s+execute-command|logs|s3\\s+cp|s3api\\s+get-object|dynamodb|rds-data|athena)\\b",
+        "\\bdocker\\s+(exec|logs|cp)\\b",
+        "\\b(heroku\\s+(run|logs|pg:psql)|fly\\s+(ssh|logs))\\b",
+        "\\b(curl|wget|xh)\\b",
+        "\\b(sentry-cli|datadog-ci)\\b|\\bgcloud\\s+logging\\b|\\baz\\s+monitor\\b"
+      ]
+    },
+    "scrub_tools": {
+      "type": "string",
+      "multiple": true,
+      "title": "Data tools",
+      "description": "JavaScript regexes for tool names (MCP tools included) whose output is scrubbed under the data scope.",
+      "default": [
+        "^mcp__.*(sentry|datadog|postgres|mysql|sql|snowflake|bigquery|database|supabase|mongo|redis|athena|redshift|elastic|splunk|honeycomb)"
+      ]
+    },
+    "scrub_files": {
+      "type": "string",
+      "multiple": true,
+      "title": "Data files",
+      "description": "JavaScript regexes (case-insensitive) for file paths whose Read output is scrubbed under the data scope.",
+      "default": [
+        "\\.(csv|tsv|log|sql|dump|jsonl|ndjson|xlsx?|parquet|avro|hl7|dcm)$"
+      ]
     }
   }
 }

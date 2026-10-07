@@ -19,7 +19,7 @@ const countsOf = (text: string, options: ScanOptions): Record<string, number> =>
   Object.fromEntries(scan(patterns, text, options).counts.map(c => [c.name, c.lines]))
 
 test('every fixture gives phi-scan.sh per-class counts under every profile', () => {
-  expect(FIXTURES.length).toBe(21)
+  expect(FIXTURES.length).toBe(23)
   for (const fixture of FIXTURES) {
     for (const [variant, options] of Object.entries(VARIANTS)) {
       expect({ fixture: fixture.name, variant, counts: countsOf(fixture.text, options) }).toEqual({

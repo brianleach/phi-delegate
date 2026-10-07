@@ -15,7 +15,10 @@ const CANCEL = 'Cancel'
 const NEW_TASK = 'New task'
 // Origins a person typed; anything else that trips the scan is dropped unasked.
 const TYPED_ORIGINS = new Set(['composer', 'bridge', 'sdk'])
+// Every tool whose result the scrubber may read; scrub_scope narrows it.
 const SCRUB_TOOLS = /^(Bash|BashOutput|TaskOutput|Read|Grep|mcp__.+)$/
+const GUARD_OFF = 'Turn it off'
+const GUARD_KEEP = 'Keep it on'
 // A mod's own tool.call hooks nest, and a failure in an inner one is answered
 // by the outermost one's .catch, which would replay the chain without the
 // failed hook. So every gating catch here denies, whether or not next ran.
@@ -25,6 +28,8 @@ const DELEGATE_HINT =
 
 const flagged = atom({ plugin: 'phi-delegate', key: 'flagged' } as const, 0)
 const reviews = atom({ plugin: 'phi-delegate', key: 'reviews' } as const, [] as PhiDelegateReview[])
+// /phi-guard's choice for this session, over the option and the environment.
+const sessionGuard = atom({ plugin: 'phi-delegate', key: 'sessionGuard' } as const, 'default' as 'default' | 'on' | 'off')
 
 const patterns = parsePatterns(PATTERNS_TSV)
 
@@ -32,14 +37,32 @@ type Config = {
   guardrail: 'auto' | 'on' | 'off'
   scanClasses: string[]
   allowFile: string
+  allowInline: readonly string[]
   phiSources: readonly string[]
   scrubOutput: boolean
+  scrubScope: 'data' | 'all'
+  scrubCommands: readonly string[]
+  scrubTools: readonly string[]
+  scrubFiles: readonly string[]
 }
 
 // Set by register and read by the hooks. Module state starts over on every
 // load, an options change included, so each cache is per load.
-let config: Config = { guardrail: 'auto', scanClasses: [], allowFile: '', phiSources: [], scrubOutput: true }
-let standDown: Promise<boolean> | undefined
+let config: Config = {
+  guardrail: 'auto',
+  scanClasses: [],
+  allowFile: '',
+  allowInline: [],
+  phiSources: [],
+  scrubOutput: true,
+  scrubScope: 'data',
+  scrubCommands: [],
+  scrubTools: [],
+  scrubFiles: [],
+}
+let covered: Promise<boolean> | undefined
+let baseState: Promise<GuardState> | undefined
+let scrubRules: { commands: RegExp[]; tools: RegExp[]; files: RegExp[]; invalid: number } | undefined
 let root: Promise<string> | undefined
 let selfRepo: Promise<string | undefined> | undefined
 let allow: Promise<string[]> | undefined
@@ -51,26 +74,49 @@ const readConfig = (options: PluginOptions): Config => ({
     ...(options.prompt_keyword_classes === true ? classNames(patterns, 'keyword') : []),
   ],
   allowFile: typeof options.allowlist_file === 'string' ? options.allowlist_file : '',
+  allowInline: Array.isArray(options.allowlist) ? options.allowlist : [],
   phiSources: Array.isArray(options.phi_sources) ? options.phi_sources : [],
   scrubOutput: options.scrub_tool_output !== false,
+  scrubScope: options.scrub_scope === 'all' ? 'all' : 'data',
+  scrubCommands: Array.isArray(options.scrub_commands) ? options.scrub_commands : [],
+  scrubTools: Array.isArray(options.scrub_tools) ? options.scrub_tools : [],
+  scrubFiles: Array.isArray(options.scrub_files) ? options.scrub_files : [],
 })
 
-// Whether every hook passes straight through. Always inside the covered
-// delegate (phi-claude.sh sets the marker, and managed mods load there too).
-// Elsewhere PHI_DELEGATE_GUARDRAIL=on|off wins, then the guardrail option;
-// "auto" is off for a skill-only install.sh setup, whose symlink in the
-// skills folder is what loads this plugin, so pulling a release never turns
-// the guardrail on for someone who did not ask for it.
-async function isOff($: EngineInterface): Promise<boolean> {
-  standDown ??= (async () => {
-    if ((await $.env.get('PHI_DELEGATE_SESSION')) === '1') return true
+// covered: inside the covered delegate (phi-claude.sh sets the marker, and
+// managed mods load there too), where everything stands down. on: active.
+// off: turned off on purpose (/phi-guard, the option, or the environment),
+// shown on the status line. auto-off: the default for a skill-only install.sh
+// setup, whose symlink in the skills folder is what loads this plugin, so
+// pulling a release never turns the guardrail on for someone who did not ask.
+type GuardState = 'covered' | 'on' | 'off' | 'auto-off'
+
+async function isCovered($: EngineInterface): Promise<boolean> {
+  covered ??= $.env.get('PHI_DELEGATE_SESSION').then(value => value === '1')
+  return covered
+}
+
+// Without /phi-guard: PHI_DELEGATE_GUARDRAIL=on|off, then the option, then
+// auto. Read once per load; an option change reloads the module.
+async function startingState($: EngineInterface): Promise<GuardState> {
+  baseState ??= (async (): Promise<GuardState> => {
     const forced = await $.env.get('PHI_DELEGATE_GUARDRAIL')
-    if (forced === 'on' || forced === 'off') return forced === 'off'
-    if (config.guardrail !== 'auto') return config.guardrail === 'off'
+    if (forced === 'on' || forced === 'off') return forced
+    if (config.guardrail !== 'auto') return config.guardrail
     const configDir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${(await $.env.get('HOME')) ?? ''}/.claude`
-    return $.fs.exists(`${configDir}/skills/phi-delegate`)
+    return (await $.fs.exists(`${configDir}/skills/phi-delegate`)) ? 'auto-off' : 'on'
   })()
-  return standDown
+  return baseState
+}
+
+async function guardState($: EngineInterface): Promise<GuardState> {
+  if (await isCovered($)) return 'covered'
+  const chosen = await read($, sessionGuard)
+  return chosen === 'default' ? startingState($) : chosen
+}
+
+async function isOff($: EngineInterface): Promise<boolean> {
+  return (await guardState($)) !== 'on'
 }
 
 async function repoRoot($: EngineInterface): Promise<string> {
@@ -95,13 +141,14 @@ async function realPath($: EngineInterface, path: string): Promise<string | unde
 
 async function allowEntries($: EngineInterface): Promise<string[]> {
   const file = config.allowFile
-  allow ??=
+  allow ??= (
     file === ''
       ? Promise.resolve([])
       : $.fs.read(file).then(parseAllow, () => {
           $.ui.log(`phi-delegate: allowlist ${file} could not be read; scanning without it`, { to: 'debug' })
           return []
         })
+  ).then(entries => [...entries, ...parseAllow(config.allowInline.join('\n'))])
   return allow
 }
 
@@ -193,38 +240,116 @@ function stringsOf(value: unknown): string[] {
 const GIT_HISTORY = /^\s*git\s+(?:-C\s+[^\s:]+\s+)?(?:log|show|diff)\b[^;&|`$<>()\n:]*$/
 const HISTORY_OUTPUT = /^(?:commit [0-9a-f]{7,}|diff --(?:git|cc|combined) )/
 
-function isScrubbed(tool: string): boolean {
-  return config.scrubOutput && SCRUB_TOOLS.test(tool) && tool !== DELEGATE_TOOL
+// Built once per load. A rule that does not compile widens the scope to
+// every tool rather than narrowing it: the safe direction.
+function scrubScope(): NonNullable<typeof scrubRules> {
+  scrubRules ??= (() => {
+    let invalid = 0
+    const compile = (sources: readonly string[], flags = '') =>
+      sources.flatMap(source => {
+        try {
+          return [new RegExp(source, flags)]
+        } catch {
+          invalid += 1
+          return []
+        }
+      })
+    return {
+      commands: compile([...config.scrubCommands, ...config.phiSources]),
+      tools: compile(config.scrubTools),
+      files: compile(config.scrubFiles, 'i'),
+      invalid,
+    }
+  })()
+  return scrubRules
+}
+
+// What the scrubber reads. "all" is every tool SCRUB_TOOLS names. "data" is
+// what can reach records: Bash commands that match scrub_commands (or a PHI
+// source), Read of files that match scrub_files, tools that match
+// scrub_tools, and background output, whose command is not known.
+function isScrubbed(e: { tool: string; command?: unknown; file_path?: unknown }): boolean {
+  const tool = String(e.tool)
+  if (!config.scrubOutput || tool === DELEGATE_TOOL || !SCRUB_TOOLS.test(tool)) return false
+  const scope = scrubScope()
+  if (config.scrubScope === 'all' || scope.invalid > 0) return true
+  if (tool === 'BashOutput' || tool === 'TaskOutput') return true
+  if (tool === 'Bash') return typeof e.command === 'string' && scope.commands.some(re => re.test(e.command as string))
+  if (tool === 'Read') return typeof e.file_path === 'string' && scope.files.some(re => re.test(e.file_path as string))
+  return scope.tools.some(re => re.test(tool))
+}
+
+// Turns the guardrail on mid-session: the tool and command session.start
+// registers only for an active guardrail, and the status line.
+async function activate($: EngineInterface): Promise<void> {
+  await $.tool.register({
+    name: 'delegate',
+    description:
+      'Run a PHI-free task spec in the covered BAA/zero-data-retention delegate session (scripts/delegate.sh). ' +
+      'Returns only the diff stat, the PHI scan verdicts, and the scanned handoff, then opens a review pane ' +
+      'where the human merges, rejects, or opens a PR. Runs up to 30 minutes. Never merge yourself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spec: { type: 'string', description: 'Path to the spec, conventionally .phi-tasks/<nn>-<slug>.md' },
+        name: { type: 'string', description: 'Worktree and branch name; defaults to the spec file name' },
+        pr: { type: 'boolean', description: 'Push the branch and open a draft PR (needs gh and an origin)' },
+      },
+      required: ['spec'],
+    },
+  })
+  await $.command.register({ name: 'phi-review', description: 'Open the phi-delegate review pane' })
+  $.ui.status(`PHI shield on · ${await read($, flagged)} flagged`)
 }
 
 export const register: Register = (on, options) => {
   config = readConfig(options)
-  standDown = undefined
+  covered = undefined
+  baseState = undefined
+  scrubRules = undefined
   root = undefined
   selfRepo = undefined
   allow = undefined
 
   on('session.start', async ($, e, next) => {
-    if (await isOff($)) return next(e)
-    await $.tool.register({
-      name: 'delegate',
-      description:
-        'Run a PHI-free task spec in the covered BAA/zero-data-retention delegate session (scripts/delegate.sh). ' +
-        'Returns only the diff stat, the PHI scan verdicts, and the scanned handoff, then opens a review pane ' +
-        'where the human merges, rejects, or opens a PR. Runs up to 30 minutes. Never merge yourself.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          spec: { type: 'string', description: 'Path to the spec, conventionally .phi-tasks/<nn>-<slug>.md' },
-          name: { type: 'string', description: 'Worktree and branch name; defaults to the spec file name' },
-          pr: { type: 'boolean', description: 'Push the branch and open a draft PR (needs gh and an origin)' },
-        },
-        required: ['spec'],
-      },
+    const state = await guardState($)
+    if (state === 'covered') return next(e)
+    await $.command.register({
+      name: 'phi-guard',
+      description: 'Show the phi-delegate guardrail, or turn it on or off for this session',
+      argumentHint: '[on|off]',
     })
-    await $.command.register({ name: 'phi-review', description: 'Open the phi-delegate review pane' })
-    $.ui.status(`PHI shield on · ${await read($, flagged)} flagged`)
+    if (state === 'on') await activate($)
+    else if (state === 'off') $.ui.status('PHI shield off')
     return next(e)
+  })
+
+  // Turning it off asks the person, so a model that runs the command cannot
+  // switch the guardrail off by itself; turning it on needs no question.
+  on('command.run', { command: 'phi-guard' }, async ($, e) => {
+    const state = await guardState($)
+    const wanted = e.args.trim()
+    if (wanted === 'on') {
+      if (state === 'on') return { text: 'phi-delegate guardrail: already on.' }
+      await update($, sessionGuard, () => 'on')
+      await activate($)
+      return { text: 'phi-delegate guardrail: on for this session.' }
+    }
+    if (wanted === 'off') {
+      if (state !== 'on') return { text: 'phi-delegate guardrail: already off.' }
+      const answer = await $.ui
+        .ask('Turn the PHI guardrail off for the rest of this session? Prompts, tool output, and commands stop being checked.', {
+          header: 'PHI guard',
+          options: [GUARD_OFF, GUARD_KEEP],
+        })
+        .catch(() => GUARD_KEEP)
+      if (answer !== GUARD_OFF) return { text: 'phi-delegate guardrail: kept on.' }
+      await update($, sessionGuard, () => 'off')
+      $.ui.status('PHI shield off')
+      return { text: 'phi-delegate guardrail: off for this session. /phi-guard on turns it back on.' }
+    }
+    const shown = state === 'on' ? 'on' : state === 'auto-off' ? 'off (skill-only install; set the guardrail option to on)' : 'off'
+    return { text: `phi-delegate guardrail: ${shown}. Use /phi-guard on or /phi-guard off for this session.` }
   })
 
   on('command.run', { command: 'phi-review' }, async $ => {
@@ -272,11 +397,12 @@ export const register: Register = (on, options) => {
     }
   }).catch(() => ({ deny: CHECK_FAILED }))
 
-  // Last line of defense: a result that matches is replaced before the model
-  // reads it. Bash keeps its record shape; every other tool's becomes a deny.
+  // Last line of defense, for the tools isScrubbed names: a result that
+  // matches is replaced before the model reads it. Bash keeps its record
+  // shape; every other tool's becomes a deny.
   on('tool.call', { tool: SCRUB_TOOLS }, async ($, e, next) => {
     const tool = String(e.tool)
-    if (!isScrubbed(tool) || (await isOff($))) return next(e)
+    if (!isScrubbed(e) || (await isOff($))) return next(e)
     const ran = await next(e)
     if (ran.deny !== undefined) return ran
     const text = ran.text ?? stringsOf(ran.result).join('\n')

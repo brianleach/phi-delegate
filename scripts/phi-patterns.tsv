@@ -4,7 +4,11 @@
 #
 # Columns are tab separated, and an empty field is written "-":
 #   kind   class: a scan class, reported in this order
-#          mask: rewritten before scanning (infrastructure ids, not PHI)
+#          mask: rewritten before scanning (infrastructure ids, GitHub
+#                URLs, and timestamps, which are not PHI). A timestamp is a
+#                date in 2000 or later with a time other than midnight: a
+#                date of birth stored as a datetime prints as midnight, and
+#                a 19xx date is never masked
 #          drop: line dropped under --profile diff (git metadata), only
 #                outside a hunk; every line inside a hunk is content
 #          hunk: "start" and "end" mark a hunk for --profile diff: it runs
@@ -20,6 +24,9 @@
 #   repl   mask rows only: the replacement, \1 for the first group
 mask	arn	-	-	arn:aws:[A-Za-z0-9:/_.-]+	[ARN]
 mask	ecr	-	-	(^|[^0-9])[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com	\1[ECR]
+mask	github-url	-	-	https?://((www|api|gist)\.)?github\.com/[^[:space:])>"'`]*	[GITHUB-URL]
+mask	timestamp-iso	-	-	20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]((0?[1-9]|1[0-9]|2[0-3]):[0-5][0-9]|0?0:(0[1-9]|[1-5][0-9]))	[TIMESTAMP]
+mask	timestamp-us	-	-	(0?[1-9]|1[0-2])/(0?[1-9]|[12][0-9]|3[01])/(20[0-9]{2}|[0-9]{2})[ ,T]+((0?[1-9]|1[0-9]|2[0-3]):[0-5][0-9]|0?0:(0[1-9]|[1-5][0-9]))	[TIMESTAMP]
 hunk	start	-	-	^@@@*[ ]
 hunk	end	-	-	^(diff --(git|cc|combined) |commit [0-9a-f]+( |$))
 drop	git-headers	i	-	^(diff --(git|cc|combined) |index [0-9a-f,]+\.\.[0-9a-f]+|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@@* )

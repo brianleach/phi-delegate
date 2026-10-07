@@ -9,6 +9,7 @@ declare module 'claude-code' {
     'phi-delegate': {
       flagged: number
       reviews: PhiDelegateReview[]
+      sessionGuard: 'default' | 'on' | 'off'
     }
   }
 }

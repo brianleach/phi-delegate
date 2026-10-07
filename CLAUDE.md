@@ -79,6 +79,11 @@ PHI-scanned handoff summary and file names.
   option defaults to `auto`, which is off while a phi-delegate symlink
   sits in the skills folder, so pulling a release never turns it on for
   someone who did not ask. Keep that default when changing the switch.
+- Output scrubbing is scoped: by default (`scrub_scope: data`) it reads
+  only output that can carry records (data commands, data files, data
+  tools, background output), so ordinary engineering work is not withheld.
+  Widen the defaults rather than scrubbing everything; a rule that does
+  not compile widens to `all`.
 - Private input staged by the mod lives in `.phi-tasks/<name>.private.md`
   (mode 600) and is deleted with its spec; nothing but the task name
   reaches the model.

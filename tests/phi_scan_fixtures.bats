@@ -127,6 +127,13 @@ expect_verdict() {
   [[ "$output" == *"ssn-shaped"* ]]
   [[ "$output" != *"email-address"* ]]
 }
+@test "clean: CI log with GitHub run URLs and timestamps passes" {
+  expect_verdict clean clean-ci-log.txt
+}
+@test "dirty: dates of birth stored as midnight datetimes or 19xx still flag" {
+  expect_verdict flagged dirty-midnight-dob.txt --only iso-date
+  [[ "$output" == *"iso-date                     3 line(s)"* ]]
+}
 @test "clean: real git log -p capture passes under diff profile" {
   expect_verdict clean clean-log-p.diff --profile diff
   expect_verdict flagged clean-log-p.diff

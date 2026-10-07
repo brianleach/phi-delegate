@@ -56,6 +56,9 @@ and the rules below are yours to keep.
    button, or `collect.sh <name> --reject`) only when the human agrees.
 8. Fable and Mythos class models are not offered under ZDR; do not pass
    them with `--model`. Default is `claude-opus-5`.
+9. Never run `/phi-guard off`, suggest turning the guardrail off, or edit
+   settings to get around a block or a withheld result. Delegate the work
+   instead. Turning the guardrail off is the user's call alone.
 
 ## Protocol
 
