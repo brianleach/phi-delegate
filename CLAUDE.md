@@ -75,6 +75,10 @@ PHI-scanned handoff summary and file names.
   level, where `claude plugin validate` can trace them.
 - The mod and guard-hook.sh do nothing when PHI_DELEGATE_SESSION=1, which
   phi-claude.sh exports for the delegate; managed mods load there too.
+- The mod is opt-in for skill-only install.sh setups: the `guardrail`
+  option defaults to `auto`, which is off while a phi-delegate symlink
+  sits in the skills folder, so pulling a release never turns it on for
+  someone who did not ask. Keep that default when changing the switch.
 - Private input staged by the mod lives in `.phi-tasks/<name>.private.md`
   (mode 600) and is deleted with its spec; nothing but the task name
   reaches the model.

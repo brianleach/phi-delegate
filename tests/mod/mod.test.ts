@@ -482,3 +482,54 @@ test('a quoted script path naming .phi-tasks is allowed; an expanded one is not'
   }
   expect((await $.tool.call({ tool: 'Bash', command: 'bash "$HOME/scripts/delegate.sh" .phi-tasks/01.md' })).deny ?? '').toMatch(/private input sidecars/)
 })
+
+// The guardrail switch: opt-in for a skill-only install.sh setup
+
+const SKILL_LINK = { '/home/u/.claude/skills/phi-delegate': '' }
+
+const isGuarded = async ($: any) =>
+  ((await $.tool.call({ tool: 'Read', file_path: '.phi-worktrees/x.log' })).deny ?? '').includes('guard: blocked')
+
+test('auto: a skill-only install keeps the guardrail off, as before this release', async ($, on) => {
+  const seen = stub(on, { env: { HOME: '/home/u' }, files: SKILL_LINK, toolText: `ssn ${SSN}` })
+  expect(await isGuarded($)).toBe(false)
+  expect(await $.tool.call({ tool: 'Bash', command: 'cat export.csv' })).toMatchObject({ result: `ssn ${SSN}` })
+  expect(await submit($, `look up ${SSN}`)).toEqual({ text: `look up ${SSN}` })
+  expect(seen.asked).toEqual([])
+  expect(((await $.tool.call({ tool: 'mcp__phi-delegate__delegate', spec: '.phi-tasks/01.md' })) as any).deny).toMatch(/guardrail is off/)
+})
+
+test('auto: with no skills-folder link the guardrail is on', async ($, on) => {
+  stub(on, { env: { HOME: '/home/u' } })
+  expect(await isGuarded($)).toBe(true)
+})
+
+test('auto honors CLAUDE_CONFIG_DIR when looking for the skills-folder link', async ($, on) => {
+  stub(on, { env: { HOME: '/home/u', CLAUDE_CONFIG_DIR: '/cfg' }, files: { '/cfg/skills/phi-delegate': '' } })
+  expect(await isGuarded($)).toBe(false)
+})
+
+test('the guardrail option turns it on for a skill-only install', { options: { guardrail: 'on' } }, async ($, on) => {
+  stub(on, { env: { HOME: '/home/u' }, files: SKILL_LINK })
+  expect(await isGuarded($)).toBe(true)
+})
+
+test('the guardrail option turns it off anywhere', { options: { guardrail: 'off' } }, async ($, on) => {
+  stub(on, { env: { HOME: '/home/u' } })
+  expect(await isGuarded($)).toBe(false)
+})
+
+test('PHI_DELEGATE_GUARDRAIL overrides the option either way', { options: { guardrail: 'off' } }, async ($, on) => {
+  stub(on, { env: { HOME: '/home/u', PHI_DELEGATE_GUARDRAIL: 'on' }, files: SKILL_LINK })
+  expect(await isGuarded($)).toBe(true)
+})
+
+test('PHI_DELEGATE_GUARDRAIL=off turns it off where auto would be on', async ($, on) => {
+  stub(on, { env: { HOME: '/home/u', PHI_DELEGATE_GUARDRAIL: 'off' } })
+  expect(await isGuarded($)).toBe(false)
+})
+
+test('inside the covered delegate it stays off even when forced on', async ($, on) => {
+  stub(on, { env: { PHI_DELEGATE_SESSION: '1', PHI_DELEGATE_GUARDRAIL: 'on' } })
+  expect(await isGuarded($)).toBe(false)
+})

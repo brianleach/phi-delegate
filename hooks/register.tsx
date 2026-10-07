@@ -29,6 +29,7 @@ const reviews = atom({ plugin: 'phi-delegate', key: 'reviews' } as const, [] as 
 const patterns = parsePatterns(PATTERNS_TSV)
 
 type Config = {
+  guardrail: 'auto' | 'on' | 'off'
   scanClasses: string[]
   allowFile: string
   phiSources: readonly string[]
@@ -37,13 +38,14 @@ type Config = {
 
 // Set by register and read by the hooks. Module state starts over on every
 // load, an options change included, so each cache is per load.
-let config: Config = { scanClasses: [], allowFile: '', phiSources: [], scrubOutput: true }
-let covered: Promise<boolean> | undefined
+let config: Config = { guardrail: 'auto', scanClasses: [], allowFile: '', phiSources: [], scrubOutput: true }
+let standDown: Promise<boolean> | undefined
 let root: Promise<string> | undefined
 let selfRepo: Promise<string | undefined> | undefined
 let allow: Promise<string[]> | undefined
 
 const readConfig = (options: PluginOptions): Config => ({
+  guardrail: options.guardrail === 'on' || options.guardrail === 'off' ? options.guardrail : 'auto',
   scanClasses: [
     ...classNames(patterns, 'identifier'),
     ...(options.prompt_keyword_classes === true ? classNames(patterns, 'keyword') : []),
@@ -53,11 +55,22 @@ const readConfig = (options: PluginOptions): Config => ({
   scrubOutput: options.scrub_tool_output !== false,
 })
 
-// phi-claude.sh sets the marker in the covered delegate. Managed mods load
-// there too, and the delegate must read its task and see real data.
-async function isCovered($: EngineInterface): Promise<boolean> {
-  covered ??= $.env.get('PHI_DELEGATE_SESSION').then(value => value === '1')
-  return covered
+// Whether every hook passes straight through. Always inside the covered
+// delegate (phi-claude.sh sets the marker, and managed mods load there too).
+// Elsewhere PHI_DELEGATE_GUARDRAIL=on|off wins, then the guardrail option;
+// "auto" is off for a skill-only install.sh setup, whose symlink in the
+// skills folder is what loads this plugin, so pulling a release never turns
+// the guardrail on for someone who did not ask for it.
+async function isOff($: EngineInterface): Promise<boolean> {
+  standDown ??= (async () => {
+    if ((await $.env.get('PHI_DELEGATE_SESSION')) === '1') return true
+    const forced = await $.env.get('PHI_DELEGATE_GUARDRAIL')
+    if (forced === 'on' || forced === 'off') return forced === 'off'
+    if (config.guardrail !== 'auto') return config.guardrail === 'off'
+    const configDir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${(await $.env.get('HOME')) ?? ''}/.claude`
+    return $.fs.exists(`${configDir}/skills/phi-delegate`)
+  })()
+  return standDown
 }
 
 async function repoRoot($: EngineInterface): Promise<string> {
@@ -186,13 +199,13 @@ function isScrubbed(tool: string): boolean {
 
 export const register: Register = (on, options) => {
   config = readConfig(options)
-  covered = undefined
+  standDown = undefined
   root = undefined
   selfRepo = undefined
   allow = undefined
 
   on('session.start', async ($, e, next) => {
-    if (await isCovered($)) return next(e)
+    if (await isOff($)) return next(e)
     await $.tool.register({
       name: 'delegate',
       description:
@@ -222,7 +235,7 @@ export const register: Register = (on, options) => {
   // The guard-hook.sh port: quarantined paths, --full-diff, sidecars, the
   // delegate config dir, and merging, which only the review pane does.
   on('tool.call', { tool: /^(Read|Edit|Write|Bash|Grep|Glob|MultiEdit|NotebookEdit)$/ }, async ($, e, next) => {
-    if (await isCovered($)) return next(e)
+    if (await isOff($)) return next(e)
     const payload = JSON.stringify(e)
     selfRepo ??= realPath($, $.plugin.root)
     const cwd = await realPath($, await $.session.cwd())
@@ -239,7 +252,7 @@ export const register: Register = (on, options) => {
 
   // Commands that reach a known PHI source go to the delegate instead.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    if (await isCovered($)) return next(e)
+    if (await isOff($)) return next(e)
     // Only a missing file means no repo patterns; a file that is there but
     // cannot be read fails the check, and the call is denied.
     const sourcesFile = `${await repoRoot($)}/.phi-sources`
@@ -263,7 +276,7 @@ export const register: Register = (on, options) => {
   // reads it. Bash keeps its record shape; every other tool's becomes a deny.
   on('tool.call', { tool: SCRUB_TOOLS }, async ($, e, next) => {
     const tool = String(e.tool)
-    if (!isScrubbed(tool) || (await isCovered($))) return next(e)
+    if (!isScrubbed(tool) || (await isOff($))) return next(e)
     const ran = await next(e)
     if (ran.deny !== undefined) return ran
     const text = ran.text ?? stringsOf(ran.result).join('\n')
@@ -279,7 +292,7 @@ export const register: Register = (on, options) => {
   // The delegate tool. delegate.sh can run 30 minutes, past $.process.run's
   // ten, so it is spawned; interrupting the turn ends the child.
   on('tool.call', { tool: DELEGATE_TOOL }, async ($, e, next) => {
-    if (await isCovered($)) return { deny: 'The delegate tool is not available inside a covered delegate session.' }
+    if (await isOff($)) return { deny: 'The delegate tool is not available: the phi-delegate guardrail is off in this session.' }
     const spec = typeof e.spec === 'string' ? e.spec : ''
     if (!spec.endsWith('.md') || spec.endsWith('.private.md') || spec.includes('\0')) {
       return { deny: 'delegate: spec must be the path of a .md task spec, not a .private.md sidecar.' }
@@ -306,13 +319,13 @@ export const register: Register = (on, options) => {
 
   // The tool's own calls need no Bash classifier: its argv is fixed.
   on('tool.check', { tool: DELEGATE_TOOL }, async ($, e, next) =>
-    (await isCovered($)) ? next(e) : { decision: 'allow' },
+    (await isOff($)) ? next(e) : { decision: 'allow' },
   )
 
   // Prompts scan the identifier-shaped classes; keyword classes are opt-in
   // because schema talk trips them.
   on('prompt.submit', async ($, e, next) => {
-    if (await isCovered($)) return next(e)
+    if (await isOff($)) return next(e)
     const result = await scanText($, [e.text, ...(e.context ?? [])].join('\n'), 'default')
     if (result.total === 0) return next(e)
     await flag($)

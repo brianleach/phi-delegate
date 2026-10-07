@@ -8,6 +8,13 @@
   "keywords": ["hipaa", "phi", "baa", "zdr", "guardrail"],
   "types": "./types/index.d.ts",
   "userConfig": {
+    "guardrail": {
+      "type": "string",
+      "title": "Guardrail",
+      "description": "auto: on, except for a skill-only install.sh setup (a phi-delegate symlink in the skills folder), where it stays off until you choose on. The PHI_DELEGATE_GUARDRAIL=on|off environment variable overrides this.",
+      "options": ["auto", "on", "off"],
+      "default": "auto"
+    },
     "prompt_keyword_classes": {
       "type": "boolean",
       "title": "Scan prompts and tool output for keyword classes",

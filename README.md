@@ -125,6 +125,7 @@ rows, or `claude plugin install --config key=value`:
 
 | Option | Default | What it does |
 |---|---|---|
+| `guardrail` | `auto` | `auto` turns the mod on, except for a skill-only `install.sh` setup (a `phi-delegate` symlink in `~/.claude/skills`), where it stays off until you choose `on`. `off` turns it off anywhere. The `PHI_DELEGATE_GUARDRAIL=on` or `off` environment variable overrides it. The covered delegate always stands down. |
 | `prompt_keyword_classes` | `false` | Also scan prompts and tool output for the keyword classes. Off because talking about schemas trips them. |
 | `allowlist_file` | empty | A file of extended regexes, one per line, applied to matched lines (for example your company email domain). |
 | `phi_sources` | `snowsql`, `psql` against a `*PROD*` variable | JavaScript regexes for Bash commands that reach PHI. A repo adds its own in a `.phi-sources` file at its root, same format. A pattern that does not compile, or a `.phi-sources` that cannot be read, blocks Bash until it is fixed. |
@@ -139,11 +140,20 @@ The skill-only install still works and is unchanged:
 ./install.sh --with-guard  # also add guard-hook.sh to ~/.claude/settings.json
 ```
 
-Without the mod there is no prompt interception, output scrubbing,
-`delegate` tool, or review pane. The skill drives `delegate.sh` and
-`collect.sh` through Bash, and you approve merges in the conversation, as
-before. Do not combine the symlink with the plugin: the skill would load
-twice.
+The symlink makes Claude Code load this folder as a plugin
+(`phi-delegate@skills-dir`), but the mod stays off there by default, so
+pulling this release changes nothing for an existing install: the skill
+drives `delegate.sh` and `collect.sh` through Bash, the guard hook blocks
+what it always blocked, and you approve merges in the conversation, as
+before. To try the guardrail on that setup, turn it on:
+
+```bash
+echo '{"guardrail":"on"}' | claude plugin configure phi-delegate@skills-dir --values-stdin
+```
+
+or set `PHI_DELEGATE_GUARDRAIL=on` for one session. Do not combine the
+symlink with a marketplace install: the skill would load twice, and with
+the symlink present the marketplace copy also defaults to off.
 
 ## Usage
 
