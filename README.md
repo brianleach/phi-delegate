@@ -235,7 +235,7 @@ machine (writable only by administrators), then add managed settings:
   "prependPlugins": ["phi-delegate@phi-delegate", "sec-default@builtin"],
   "pluginConfigs": {
     "phi-delegate@phi-delegate": {
-      "options": { "prompt_keyword_classes": false, "allowlist_file": "/opt/phi-delegate-allow" }
+      "options": { "guardrail": "on", "prompt_keyword_classes": false, "allowlist_file": "/opt/phi-delegate-allow" }
     }
   },
   "disableSideloadFlags": true
@@ -248,6 +248,8 @@ machine (writable only by administrators), then add managed settings:
   by `prependPlugins`.
 - `prependPlugins` replaces the default, so name `sec-default@builtin` to
   keep the built-in guard.
+- `"guardrail": "on"` keeps the mod on even for a developer who also has
+  the old `install.sh` symlink, where `auto` would leave it off.
 - `disableSideloadFlags` rejects `--plugin-dir` (and `--plugin-url`,
   `--agents`, `--mcp-config`) so a session cannot be started around the
   policy that way.
