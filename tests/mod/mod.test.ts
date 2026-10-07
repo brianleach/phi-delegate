@@ -219,7 +219,9 @@ test('Send anyway lets a flagged prompt through', async ($, on) => {
 
 test('a dismissed question drops the prompt (fail closed)', async ($, on) => {
   stub(on, { answers: [] })
-  expect(((await submit($, `look up ${SSN}`)) as any).drop).toMatch(/PHI check failed/)
+  const out: any = await submit($, `look up ${SSN}`)
+  expect(out.drop).toMatch(/ssn-shaped 1; text withheld\) and got no answer/)
+  expect(out.drop).not.toContain('987-65')
 })
 
 test('free text under Other is not an answer to send', async ($, on) => {

@@ -459,10 +459,16 @@ export const register: Register = (on, options) => {
     if (!TYPED_ORIGINS.has(e.origin.kind)) {
       return { drop: `phi-delegate: a ${e.origin.kind} message was held back because it matched PHI patterns (${what}).` }
     }
-    const answer = await $.ui.ask(`This prompt matched PHI patterns (${what}). What should happen to it?`, {
-      header: 'PHI',
-      options: [STAGE, SEND, CANCEL],
-    })
+    // Dismissed, or nobody to ask (a headless run): the prompt does not go.
+    const answer = await $.ui
+      .ask(`This prompt matched PHI patterns (${what}). What should happen to it?`, {
+        header: 'PHI',
+        options: [STAGE, SEND, CANCEL],
+      })
+      .catch(() => undefined)
+    if (answer === undefined) {
+      return { drop: `phi-delegate: the prompt matched PHI patterns (${what}) and got no answer, so it was not sent.` }
+    }
     if (answer === SEND) return next(e)
     const name = answer === STAGE ? await stagePrivateInput($, e.text) : undefined
     if (name === undefined) return { drop: 'phi-delegate: prompt cancelled; it was not sent to the model.' }
