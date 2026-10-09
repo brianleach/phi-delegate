@@ -22,7 +22,9 @@ PHI-scanned handoff summary and a diff --stat.
 Behavior:
   - creates a worktree under .phi-worktrees/<name> on branch phi/<name>,
     branched off the current branch (directory mode 700)
-  - copies the spec into the worktree as .phi-task.md and runs claude -p
+  - copies the spec into the worktree as .phi-task.md, appending a staged
+    private input sidecar (<spec>.private.md, written by the mod) as its
+    "## Private input" section, and runs claude -p
     there via phi-claude.sh with a per-run CLAUDE_CONFIG_DIR that is
     deleted when the run ends (no session history survives)
   - the raw transcript is written to a temp file, checked for permission
@@ -115,6 +117,13 @@ if [ ! -f "$spec_file" ]; then
   exit 1
 fi
 spec_file="$(cd "$(dirname "$spec_file")" && pwd)/$(basename "$spec_file")"
+case "$spec_file" in
+  *.private.md)
+    echo "error: $(basename "$spec_file") is a private input sidecar; pass the spec it belongs to" >&2
+    exit 1
+    ;;
+esac
+sidecar_file="${spec_file%.md}.private.md"
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
@@ -180,6 +189,11 @@ chmod 600 "$state_dir/$name.spec"
 
 cp "$spec_file" "$wt_dir/.phi-task.md"
 chmod 600 "$wt_dir/.phi-task.md"
+if [ -f "$sidecar_file" ]; then
+  printf '\n## Private input\n\n' >>"$wt_dir/.phi-task.md"
+  cat "$sidecar_file" >>"$wt_dir/.phi-task.md"
+  echo "==> appended staged private input from $(basename "$sidecar_file")"
+fi
 
 prompt="Read the file .phi-task.md in the current directory and complete the task it describes. Do not modify or delete .phi-task.md.
 

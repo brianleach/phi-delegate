@@ -12,3 +12,6 @@
 # OS noise
 .DS_Store
 !.env.example
+
+# Laid by Claude Code when it loads this plugin from a checkout
+/tsconfig.json

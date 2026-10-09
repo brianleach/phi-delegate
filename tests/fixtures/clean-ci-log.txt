@@ -1,0 +1,4 @@
+2026-10-07T19:04:18.0655116Z ##[group]Run shellcheck scripts/*.sh
+2026-10-07 19:04:21 job finished in 42s
+See https://github.com/example-org/example-app/actions/runs/37660736649/job/112444228489 for the run
+10/07/2026 7:04 PM upload complete

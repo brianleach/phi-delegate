@@ -41,3 +41,10 @@ setup() { SCAN="$(phi_repo_root)/scripts/phi-scan.sh"; }
   run "$SCAN" "${BATS_TEST_TMPDIR}/h.md"
   [ "$status" -eq 1 ]
 }
+
+@test "a missing pattern file is an error, not a flagged scan" {
+  cp "$(phi_repo_root)/scripts/phi-scan.sh" "${BATS_TEST_TMPDIR}/phi-scan.sh"
+  run "${BATS_TEST_TMPDIR}/phi-scan.sh" <<<"clean text"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"pattern file missing"* ]]
+}

@@ -1,0 +1,13 @@
+{
+  "modules": ["./register.tsx"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|Bash|Grep|Glob|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/guard-hook.sh" }
+        ]
+      }
+    ]
+  }
+}

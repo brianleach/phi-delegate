@@ -1,17 +1,31 @@
 # phi-delegate
 
-A Claude Code skill for HIPAA-covered work. The interactive Claude Code
-session (a consumer subscription login, not covered by a BAA) plans work
-and delegates anything that could touch PHI to a headless `claude -p`
-session authenticated with an API key from an Anthropic organization that
-has a signed BAA and zero data retention. Nothing the delegate sees comes
-back to the orchestrator except a PHI-scanned handoff summary and file
-names.
+A Claude Code plugin for HIPAA-covered work: an always-on guardrail mod in
+the interactive session (a consumer subscription login, not covered by a
+BAA), plus a covered lane that delegates anything that could touch PHI to
+a headless `claude -p` session authenticated with an API key from an
+Anthropic organization that has a signed BAA and zero data retention.
+Nothing the delegate sees comes back to the orchestrator except a
+PHI-scanned handoff summary and file names.
 
 ## Repo layout
 
-- `SKILL.md` - the skill definition Claude Code loads (this repo is
-  symlinked into `~/.claude/skills/phi-delegate`)
+- `.claude-plugin/plugin.json` - the plugin manifest (skill, mod, guard
+  hook, `userConfig` options); `marketplace.json` lists it at `./` so the
+  repo is its own local marketplace
+- `SKILL.md` - the skill definition, loaded as the plugin's single root
+  skill (or symlinked into `~/.claude/skills/phi-delegate` by install.sh)
+- `hooks/`
+  - `hooks.json` - names the mod's module and registers guard-hook.sh as a
+    PreToolUse settings hook, the fallback where mods do not run
+  - `register.tsx` - the mod: stand-down in covered sessions, the guard
+    port, PHI-source denies, prompt interception and private input
+    staging, output scrubbing, the `delegate` tool, the review pane, and
+    the status line
+  - `guard.ts` - the mod's pure guard rules
+  - `scan.ts` - the mod's port of phi-scan.sh
+  - `patterns.generated.ts` - generated copy of scripts/phi-patterns.tsv
+- `types/index.d.ts` - the mod's `$.state` contract
 - `scripts/`
   - `check-env.sh` - preflight: CLI, ZDR key and attestation, config dir
     isolation, guard hook, API auth, smoke test
@@ -28,15 +42,54 @@ names.
   - `cleanup.sh` - sweep leftover handoffs, specs, worktrees, run
     records, merged phi/* branches, and session state; dry run by
     default, names and counts only
+  - `prepare-sidecar.sh` - creates an empty private input sidecar for the
+    mod (folder 700, file 600, symlinks refused, git-excluded)
   - `phi-scan.sh` - heuristic PHI tripwire; reports counts, never text
+  - `phi-patterns.tsv` - the one pattern source for phi-scan.sh and the mod
+  - `gen-mod-data.sh` - writes the TypeScript copies of the patterns and
+    fixtures; `--check` fails on drift
   - `guard-hook.sh` - PreToolUse hook for the orchestrator that blocks
-    access to `.phi-worktrees/`, handoff copies, and `--full-diff`
-- `install.sh` - symlinks the skill; `--with-guard` also registers the hook
-- `tests/` - bats suite, offline
+    access to `.phi-worktrees/`, handoff copies, `*.private.md` sidecars,
+    and `--full-diff`; stands down when PHI_DELEGATE_SESSION=1
+- `install.sh` - skill-only install: symlinks the skill; `--with-guard`
+  also registers the hook in user settings
+- `tests/` - bats suite, offline; `tests/mod/` holds the mod's
+  `claude plugin test` files, including the scanner parity test
 
 ## Conventions
 
 - Bash scripts use `set -euo pipefail` and must be shellcheck clean.
+- This repo is public. Examples, defaults, and test data stay generic
+  (example.invalid, synthetic identifiers); no organization or project
+  names.
+- Edit patterns only in `scripts/phi-patterns.tsv`, then run
+  `scripts/gen-mod-data.sh`. Regexes must mean the same thing to
+  `grep -E` and JavaScript; the parity test checks every fixture.
+- The plugin is the documented install path; install.sh and the
+  skill-only flow must keep working unchanged. The mod adds behavior and
+  never removes a script flag or output line.
+- Mod hooks fail closed: every gating `tool.call` and `prompt.submit` hook
+  has a `.catch` that denies or drops. A mod's nested `tool.call` hooks
+  are answered by the outermost one's `.catch`, so those never replay
+  `next(e)`. Functions that take `$` are declared at the module's top
+  level, where `claude plugin validate` can trace them.
+- The mod and guard-hook.sh do nothing when PHI_DELEGATE_SESSION=1, which
+  phi-claude.sh exports for the delegate; managed mods load there too.
+- The mod is opt-in for skill-only install.sh setups: the `guardrail`
+  option defaults to `auto`, which is off while a phi-delegate symlink
+  sits in the skills folder, so pulling a release never turns it on for
+  someone who did not ask. Keep that default when changing the switch.
+- Output scrubbing is scoped: by default (`scrub_scope: data`) it reads
+  only output that can carry records (data commands, data files, data
+  tools, background output), so ordinary engineering work is not withheld.
+  Widen the defaults rather than scrubbing everything; a rule that does
+  not compile widens to `all`.
+- Private input staged by the mod lives in `.phi-tasks/<name>.private.md`
+  (mode 600) and is deleted with its spec; nothing but the task name
+  reaches the model.
+- The guards are a deny-list on what a call says, so they stop accidents,
+  not a session working around them. Keep README's statement of that
+  limit accurate when changing them.
 - No em dashes anywhere in generated docs. Use hyphens, commas, or colons.
 - Never write API keys, PHI, or absolute home paths into committed files.
 - Runtime state lives under `.phi-worktrees/` (worktrees, clean
@@ -47,8 +100,9 @@ names.
   deleted when a run ends, flagged handoffs are deleted unread, and
   merge/reject deletes the spec, handoff, and records (`secure_rm`, best
   effort). Any new artifact must follow the same rule.
-- The guard hook exempts calls that target this repo's own resolved path
-  so the skill can be developed from an orchestrator session.
+- The guard hook and the mod's guard exempt calls that target this repo's
+  own resolved path so the plugin can be developed from an orchestrator
+  session.
 - Default model is `claude-opus-5`. Fable and Mythos class models are
   refused because they are not offered under zero data retention.
 - The delegate reaches Anthropic only through per-invocation environment

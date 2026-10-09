@@ -1,0 +1,12 @@
+{
+  "name": "phi-delegate",
+  "owner": { "name": "phi-delegate contributors" },
+  "description": "phi-delegate: a PHI guardrail plugin for Claude Code",
+  "plugins": [
+    {
+      "name": "phi-delegate",
+      "source": "./",
+      "description": "Always-on PHI guardrail mod, the covered delegate skill, and the guard hook fallback"
+    }
+  ]
+}

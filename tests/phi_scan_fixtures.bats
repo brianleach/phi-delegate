@@ -99,6 +99,41 @@ expect_verdict() {
     [ "$status" -eq 0 ]
   done
 }
+@test "dirty: a 3-space Author: context line inside a hunk is scanned under diff profile" {
+  # One leading space plus three is four, the trailer shape; inside a hunk
+  # it is content, so the email in it counts while the commit header's do not.
+  expect_verdict flagged dirty-hunk-author.diff --profile diff
+  [[ "$output" == *"email-address                1 line(s)"* ]]
+  expect_verdict flagged dirty-hunk-author.diff
+  [[ "$output" == *"email-address                3 line(s)"* ]]
+}
+@test "a hunk ends at the next commit header, so later trailers drop again" {
+  run "$SCAN" --profile diff --only email-address <<<"$(printf '%s\n' \
+    '@@ -1 +1 @@' '    Author: in.hunk@example.org' \
+    'commit 1a2b3c4' '    Signed-off-by: trailer@example.org')"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"email-address                1 line(s)"* ]]
+}
+@test "dirty: a carriage return does not end a line, so the line still scans" {
+  expect_verdict flagged dirty-cr-trailer.txt --profile diff
+  [[ "$output" == *"ssn-shaped"* ]]
+}
+@test "edge: non-ASCII case folding is the same on every platform (C locale)" {
+  expect_verdict clean edge-unicode-street.txt
+  LC_ALL=en_US.UTF-8 expect_verdict clean edge-unicode-street.txt
+}
+@test "dirty: a merge commit's combined diff is scanned inside its @@@ hunk" {
+  expect_verdict flagged dirty-combined-diff.diff --profile diff
+  [[ "$output" == *"ssn-shaped"* ]]
+  [[ "$output" != *"email-address"* ]]
+}
+@test "clean: CI log with GitHub run URLs and timestamps passes" {
+  expect_verdict clean clean-ci-log.txt
+}
+@test "dirty: dates of birth stored as midnight datetimes or 19xx still flag" {
+  expect_verdict flagged dirty-midnight-dob.txt --only iso-date
+  [[ "$output" == *"iso-date                     3 line(s)"* ]]
+}
 @test "clean: real git log -p capture passes under diff profile" {
   expect_verdict clean clean-log-p.diff --profile diff
   expect_verdict flagged clean-log-p.diff

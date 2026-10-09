@@ -1,0 +1,44 @@
+# phi-delegate pattern source. Read by scripts/phi-scan.sh (grep -E / sed -E)
+# and by the mod (hooks/scan.ts, via the generated hooks/patterns.generated.ts).
+# Run scripts/gen-mod-data.sh after editing; bats fails on drift.
+#
+# Columns are tab separated, and an empty field is written "-":
+#   kind   class: a scan class, reported in this order
+#          mask: rewritten before scanning (infrastructure ids, GitHub
+#                URLs, and timestamps, which are not PHI). A timestamp is a
+#                date in 2000 or later with a time other than midnight: a
+#                date of birth stored as a datetime prints as midnight, and
+#                a 19xx date is never masked
+#          drop: line dropped under --profile diff (git metadata), only
+#                outside a hunk; every line inside a hunk is content
+#          hunk: "start" and "end" mark a hunk for --profile diff: it runs
+#                from an @@ (or a merge diff's @@@) line to the next diff
+#                or commit header
+#   name   the class or rule name
+#   flags  "i" for case-insensitive, else "-"
+#   tags   comma list: identifier (value-shaped, scanned in prompts by
+#          default), keyword (opt-in for prompts), prose-skip (skipped by
+#          --profile prose)
+#   regex  POSIX extended regex, also valid JavaScript (and awk, for hunk
+#          rows); no "#" in mask rows; drop rows start with ^
+#   repl   mask rows only: the replacement, \1 for the first group
+mask	arn	-	-	arn:aws:[A-Za-z0-9:/_.-]+	[ARN]
+mask	ecr	-	-	(^|[^0-9])[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com	\1[ECR]
+mask	github-url	-	-	https?://((www|api|gist)\.)?github\.com/[^[:space:])>"'`]*	[GITHUB-URL]
+mask	timestamp-iso	-	-	20[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]((0?[1-9]|1[0-9]|2[0-3]):[0-5][0-9]|0?0:(0[1-9]|[1-5][0-9]))	[TIMESTAMP]
+mask	timestamp-us	-	-	(0?[1-9]|1[0-2])/(0?[1-9]|[12][0-9]|3[01])/(20[0-9]{2}|[0-9]{2})[ ,T]+((0?[1-9]|1[0-9]|2[0-3]):[0-5][0-9]|0?0:(0[1-9]|[1-5][0-9]))	[TIMESTAMP]
+hunk	start	-	-	^@@@*[ ]
+hunk	end	-	-	^(diff --(git|cc|combined) |commit [0-9a-f]+( |$))
+drop	git-headers	i	-	^(diff --(git|cc|combined) |index [0-9a-f,]+\.\.[0-9a-f]+|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@@* )
+drop	git-trailers	i	-	^( {4})?(Author|Signed-off-by|Co-Authored-By):
+class	ssn-shaped	-	identifier	\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b
+class	phone-shaped	-	identifier	(\(|\b)[0-9]{3}(\) ?|[-. ])[0-9]{3}[-. ][0-9]{4}\b
+class	email-address	-	identifier	[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}
+class	date-shaped	-	identifier	\b(0?[1-9]|1[0-2])[/-](0?[1-9]|[12][0-9]|3[01])[/-]([0-9]{2}|[0-9]{4})\b
+class	iso-date	-	identifier	\b(19|20)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])\b
+class	dob-keyword	i	keyword,prose-skip	\b(dob|date of birth|birth ?date)\b
+class	identifier-keyword	i	keyword,prose-skip	\b(mrn|medical record|patient id|member id|policy number|ssn|social security)\b
+class	patient-name-keyword	i	keyword	\b(patient name|first_name|last_name|full_name)\s*[:=]
+class	clinical-keyword	i	keyword,prose-skip	\b(diagnos(is|es)|icd-?10|rx|prescription|dosage)\b
+class	street-address	i	identifier	\b[0-9]{1,6} [A-Za-z0-9 .]+ (street|st|avenue|ave|road|rd|blvd|lane|ln|drive|dr)\b\.?
+class	long-digit-run	-	identifier	\b[0-9]{9,}\b

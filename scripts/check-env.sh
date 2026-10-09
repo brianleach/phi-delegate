@@ -58,11 +58,13 @@ else
   pass "delegate config dir isolated: $PHI_DELEGATE_CONFIG_DIR (no OAuth login)"
 fi
 
-if [ -f "${HOME}/.claude/settings.json" ] && grep -q 'guard-hook.sh' "${HOME}/.claude/settings.json" 2>/dev/null; then
+if [ -f "${HOME}/.claude/settings.json" ] && grep -q '"phi-delegate@[^"]*": *true' "${HOME}/.claude/settings.json" 2>/dev/null; then
+  pass "phi-delegate plugin enabled in ~/.claude/settings.json (guardrail mod and guard hook)"
+elif [ -f "${HOME}/.claude/settings.json" ] && grep -q 'guard-hook.sh' "${HOME}/.claude/settings.json" 2>/dev/null; then
   pass "orchestrator guard hook installed in ~/.claude/settings.json"
 else
-  warn "guard hook not installed in ~/.claude/settings.json" \
-    "run install.sh --with-guard so the orchestrator session is mechanically blocked from reading .phi-worktrees/"
+  warn "neither the phi-delegate plugin nor the guard hook is enabled in ~/.claude/settings.json" \
+    "install the plugin (see README), or run install.sh --with-guard, so the orchestrator session is mechanically blocked from reading .phi-worktrees/ (managed settings may enable the plugin instead)"
 fi
 
 # Temp artifacts are removed by the EXIT trap so an interrupted run (Ctrl-C
