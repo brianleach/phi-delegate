@@ -307,6 +307,14 @@ test('the delegate tool is allowed without the Bash classifier', async ($, on) =
   })
 })
 
+test('the delegate tool check fails closed', async ($, on) => {
+  stub(on, { failEnv: true })
+  on('tool.check', () => ({ decision: 'allow' }))
+  const out = await $.tool.check({ tool: 'mcp__phi-delegate__delegate', input: { spec: '.phi-tasks/01-fix.md' } })
+  expect(out).toMatchObject({ decision: 'deny' })
+  expect(out.reason).toMatch(/PHI check on this call failed/)
+})
+
 test('a delegate run that fails is denied, never passed through', async ($, on) => {
   stub(on, { failSpawn: true })
   const out: any = await $.tool.call({ tool: 'mcp__phi-delegate__delegate', spec: '.phi-tasks/01-fix.md' })

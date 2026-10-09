@@ -446,7 +446,7 @@ export const register: Register = (on, options) => {
   // The tool's own calls need no Bash classifier: its argv is fixed.
   on('tool.check', { tool: DELEGATE_TOOL }, async ($, e, next) =>
     (await isOff($)) ? next(e) : { decision: 'allow' },
-  )
+  ).catch(() => ({ decision: 'deny', reason: CHECK_FAILED }))
 
   // Prompts scan the identifier-shaped classes; keyword classes are opt-in
   // because schema talk trips them.
