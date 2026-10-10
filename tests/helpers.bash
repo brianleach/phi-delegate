@@ -26,7 +26,7 @@ install_fake_claude() {
 printf '%s\n' "$@" >"${FAKE_CLAUDE_ARGS}"
 env | grep -E '^(ANTHROPIC_|CLAUDE_CONFIG_DIR|DISABLE_|PHI_DELEGATE_SESSION)' | sort >"${FAKE_CLAUDE_ENV}"
 if [ -f .phi-task.md ]; then
-  printf 'delegate wrote this\n' >>seed.txt
+  printf '%s\n' "${FAKE_EDIT:-delegate wrote this}" >>seed.txt
   printf '%s\n' "${FAKE_HANDOFF:-Updated seed.txt. Ran no tests (none exist).}" >.phi-handoff.md
 fi
 echo '{"type":"result","result":"done"}'

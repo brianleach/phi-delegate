@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: collect.sh <name> [--base <branch>] [--merge | --reject | --pr | --full-diff]
+Usage: collect.sh <name> [--base <branch>] [--merge | --reject | --pr [--push-flagged] | --full-diff]
 
 Modes:
   (default)    print diff --stat, the PHI scan of the diff, and the handoff
@@ -20,13 +20,19 @@ Modes:
                deletions as --merge); closes an open PR and deletes the
                remote branch when possible
   --pr         push phi/<name> and open a draft PR whose body is the scanned
-               handoff and the diff scan, or print the URL of the open one
+               handoff and the diff scan, or print the URL of the open one.
+               The diff is scanned first: when it flags any line, nothing is
+               pushed, no PR is opened, the branch stays local, and the exit
+               status is non-zero
   --full-diff  print the complete diff. FOR HUMANS ONLY: the guard hook
                blocks this flag inside the orchestrator session because the
                diff may carry PHI.
 
 Options:
   --base <branch>   override the recorded base branch
+  --push-flagged    with --pr: push and open the PR even when the diff scan
+                    flagged lines. The flagged lines will be public on the
+                    remote
 USAGE
   exit 1
 }
@@ -60,11 +66,13 @@ purge_records() {
 name=""
 mode="show"
 base_override=""
+push_flagged=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --merge) mode="merge"; shift ;;
     --reject) mode="reject"; shift ;;
     --pr) mode="pr"; shift ;;
+    --push-flagged) push_flagged=1; shift ;;
     --full-diff) mode="full"; shift ;;
     --base)
       [ $# -ge 2 ] || usage
@@ -146,6 +154,17 @@ if [ "$mode" = "pr" ]; then
     echo "error: $branch has no commits beyond $base_branch" >&2
     exit 1
   fi
+  # Scan before anything leaves the machine; a scan that flags lines or
+  # fails to run counts as flagged (fail closed).
+  diff_flagged=0
+  diff_scan="$(git diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" --profile diff 2>&1)" || diff_flagged=1
+  if [ "$diff_flagged" -eq 1 ] && [ "$push_flagged" -ne 1 ]; then
+    echo "==> diff scan: $diff_scan"
+    echo "error: the diff scan flagged $branch; not pushing and not opening a PR. The branch stays local." >&2
+    echo "    A human reviews it with: scripts/collect.sh $name --full-diff" >&2
+    echo "    To publish the flagged lines anyway: scripts/collect.sh $name --pr --push-flagged" >&2
+    exit 1
+  fi
   pr_body="$(mktemp "${TMPDIR:-/tmp}/phi-collect-pr.XXXXXX")"
   trap 'rm -f "$pr_body"' EXIT
   {
@@ -156,8 +175,7 @@ if [ "$mode" = "pr" ]; then
       printf '_Handoff withheld or not written_\n'
     fi
     # shellcheck disable=SC2016
-    printf '\n\n## Diff scan\n\n```\n%s\n```\n' \
-      "$(git diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" --profile diff 2>&1 || true)"
+    printf '\n\n## Diff scan\n\n```\n%s\n```\n' "$diff_scan"
   } >"$pr_body"
   git push -u origin "$branch"
   pr_url="$(gh pr create --draft --base "$base_branch" --head "$branch" \

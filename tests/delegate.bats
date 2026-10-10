@@ -200,3 +200,45 @@ FAKE
   [[ "$output" == *"==> PR: https://example.invalid/pr/7"* ]]
   [ "$(grep -c '^pr create' "$FAKE_GH_ARGS")" -eq 1 ]
 }
+
+@test "collect --pr refuses to push or open a PR when the diff scan flags a line" {
+  install_fake_gh_pr
+  export FAKE_EDIT="contact jane.doe@example.invalid"
+  "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md" >/dev/null
+  run "$ROOT/scripts/collect.sh" 01-task --pr
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"potential PHI line(s) flagged"* ]]
+  [[ "$output" == *"not pushing and not opening a PR"* ]]
+  [[ "$output" != *"jane.doe"* ]]
+  ! git -C "${BATS_TEST_TMPDIR}/origin.git" show-ref --verify --quiet refs/heads/phi/01-task
+  [ ! -f "${FAKE_GH_ARGS}.created" ]
+  git show-ref --verify --quiet refs/heads/phi/01-task
+  run "$ROOT/scripts/collect.sh" 01-task --pr --push-flagged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"draft PR: https://example.invalid/pr/7"* ]]
+  git -C "${BATS_TEST_TMPDIR}/origin.git" show-ref --verify --quiet refs/heads/phi/01-task
+}
+
+@test "delegate --pr refuses to push or open a PR when the diff scan flags a line" {
+  install_fake_gh_pr
+  export FAKE_EDIT="contact jane.doe@example.invalid"
+  run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md" --pr
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"potential PHI line(s) flagged"* ]]
+  [[ "$output" == *"not pushing and not opening a PR"* ]]
+  [[ "$output" == *"handoff (phi-scan clean)"* ]]
+  [[ "$output" != *"jane.doe"* ]]
+  ! git -C "${BATS_TEST_TMPDIR}/origin.git" show-ref --verify --quiet refs/heads/phi/01-task
+  [ ! -f "${FAKE_GH_ARGS}.created" ]
+  git show-ref --verify --quiet refs/heads/phi/01-task
+}
+
+@test "delegate --pr --push-flagged keeps the old behaviour and opens the PR" {
+  install_fake_gh_pr
+  export FAKE_EDIT="contact jane.doe@example.invalid"
+  run "$ROOT/scripts/delegate.sh" "${BATS_TEST_TMPDIR}/01-task.md" --pr --push-flagged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"draft PR: https://example.invalid/pr/7"* ]]
+  grep -q 'flagged' "${FAKE_GH_ARGS}.body"
+  git -C "${BATS_TEST_TMPDIR}/origin.git" show-ref --verify --quiet refs/heads/phi/01-task
+}
