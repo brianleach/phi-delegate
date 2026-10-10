@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: delegate.sh <task-spec.md> [--model <anthropic-model-id>] [--name <worktree-name>] [--pr]
+Usage: delegate.sh <task-spec.md> [--model <anthropic-model-id>] [--name <worktree-name>] [--pr [--push-flagged]]
 
 Delegate a task spec to an isolated headless Claude Code session that is
 authenticated with the ZDR/BAA API key, in a git worktree of the current
@@ -38,7 +38,12 @@ Behavior:
     .phi-task.md and .phi-handoff.md from the tree
   - records the spec path so collect.sh can delete it on merge/reject
   - with --pr: pushes phi/<name> to origin and opens a draft PR whose body
-    is the scanned handoff (never the spec or the log)
+    is the scanned handoff (never the spec or the log). The diff is scanned
+    first: when phi-scan.sh --profile diff flags any line, nothing is
+    pushed, no PR is opened, the branch stays local, and the run exits
+    non-zero
+  - with --pr --push-flagged: push and open the PR even when the diff scan
+    flagged lines. The flagged lines will be public on the remote
   - prints a diff --stat against the base branch
 
 Safe to run multiple times in parallel with distinct names.
@@ -79,6 +84,7 @@ spec_file=""
 model="$PHI_DELEGATE_MODEL"
 name=""
 pr_requested=0
+push_flagged=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -94,6 +100,10 @@ while [ $# -gt 0 ]; do
       ;;
     --pr)
       pr_requested=1
+      shift
+      ;;
+    --push-flagged)
+      push_flagged=1
       shift
       ;;
     -h | --help)
@@ -258,7 +268,10 @@ fi
 
 # The committed diff is also scanned so the reviewer knows whether the
 # branch itself carries PHI-shaped content before anyone opens it.
-diff_scan="$(git -C "$wt_dir" diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" --profile diff 2>&1 || true)"
+# A scan that flags lines or fails to run counts as flagged (fail closed).
+diff_flagged=0
+diff_scan="$(git -C "$wt_dir" diff "$base_branch...$branch" | "$SCRIPT_DIR/phi-scan.sh" --profile diff 2>&1)" || diff_flagged=1
+pr_blocked=0
 
 if [ "$pr_requested" -eq 1 ]; then
   if [ "$(git -C "$wt_dir" rev-list --count "$base_branch..$branch")" -eq 0 ]; then
@@ -267,6 +280,12 @@ if [ "$pr_requested" -eq 1 ]; then
     echo "WARNING: --pr requested but this repo has no origin remote; skipping PR creation." >&2
   elif ! command -v gh >/dev/null 2>&1; then
     echo "WARNING: --pr requested but gh is not on PATH; skipping PR creation." >&2
+  elif [ "$diff_flagged" -eq 1 ] && [ "$push_flagged" -ne 1 ]; then
+    pr_blocked=1
+    echo "ERROR: the diff scan flagged $branch; not pushing and not opening a PR. The branch stays local." >&2
+    printf '%s\n' "$diff_scan" >&2
+    echo "    A human reviews it with: scripts/collect.sh $name --full-diff" >&2
+    echo "    To publish the flagged lines anyway: scripts/collect.sh $name --pr --push-flagged" >&2
   else
     pr_body="$(mktemp "${TMPDIR:-/tmp}/phi-delegate-pr.XXXXXX")"
     {
@@ -312,4 +331,7 @@ fi
 echo
 echo "next: scripts/collect.sh $name           # stat + scan, then --merge"
 echo "      scripts/collect.sh $name --reject  # discard"
+if [ "$pr_blocked" -eq 1 ] && [ "$run_status" -eq 0 ]; then
+  exit 3
+fi
 exit "$run_status"
