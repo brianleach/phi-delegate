@@ -20,6 +20,9 @@ session: it scans prompts and tool output, blocks the paths and commands
 below, and gives you a `delegate` tool (`mcp__phi-delegate__delegate`)
 and a review pane. When it is not, the guard hook may still block paths,
 and the rules below are yours to keep.
+Under the default scrub scope, Bash output is scrubbed only for the
+configured data and PHI-source commands; a plain `cat` of a data file is
+not.
 
 ## Rules
 
