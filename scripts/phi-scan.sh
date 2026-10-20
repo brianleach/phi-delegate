@@ -26,6 +26,21 @@
 #                   .phi-allow); a matched line that also matches an allowlist
 #                   entry is not counted. Blank and # lines are ignored. Never
 #                   loaded implicitly, so a tree cannot allowlist itself.
+#
+# Optional model detector, off by default (output is unchanged when off):
+#   PHI_DELEGATE_DETECTOR=pii-tracer  also run scripts/phi-detector.py (the
+#                   PII-Tracer model) on the masked text, after the profile's
+#                   drops. Its classes model-person, model-address, model-id
+#                   follow the regex classes, count distinct lines, honor
+#                   --allow, and can be named in --only and --skip. When the
+#                   detector fails, is missing, or prints a malformed line,
+#                   the scan reports detector-error (1 line), which --only
+#                   and --skip cannot hide. Any value other than pii-tracer
+#                   or off: exit 2.
+#   PHI_DELEGATE_DETECTOR_PYTHON  default $HOME/.phi-delegate/detector/venv/bin/python
+#   PHI_DELEGATE_DETECTOR_DIR     default $HOME/.phi-delegate/detector/pii-tracer
+#   All three come from the environment or the phi-delegate .env (the
+#   environment wins); scripts/setup-detector.sh installs the detector.
 set -euo pipefail
 # Byte semantics everywhere, so macOS and Linux grep agree with each other
 # and with the mod's scanner (a UTF-8 locale case-folds some non-ASCII).
@@ -34,6 +49,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATTERNS="$SCRIPT_DIR/phi-patterns.tsv"
 [ -f "$PATTERNS" ] || { echo "error: pattern file missing: $PATTERNS" >&2; exit 2; }
+# shellcheck source=/dev/null
+. "$SCRIPT_DIR/load-env.sh"
 
 # Parallel arrays (bash 3.2 has no associative arrays), filled from the
 # pattern file shared with the mod. Empty fields are written "-".
@@ -53,6 +70,8 @@ while IFS=$'\t' read -r kind name flags tags regex repl; do
     hunk) case "$name" in start) hunk_start="$regex" ;; end) hunk_end="$regex" ;; esac ;;
   esac
 done <"$PATTERNS"
+MODEL_CLASSES="model-person model-address model-id"
+CLASSES+="$MODEL_CLASSES "
 
 die() { echo "error: $*" >&2; exit 2; }
 check_classes() {
@@ -80,6 +99,11 @@ case "$profile" in
   *) die "unknown profile: $profile" ;;
 esac
 [ -z "$allow" ] || [ -f "$allow" ] || die "no such allowlist: $allow"
+detector="${PHI_DELEGATE_DETECTOR:-off}"
+case "$detector" in
+  off|pii-tracer) ;;
+  *) die "unknown PHI_DELEGATE_DETECTOR: $detector (use pii-tracer or off)" ;;
+esac
 
 if [ "$input" != "/dev/stdin" ] && [ ! -f "$input" ]; then
   die "no such file: $input"
@@ -133,16 +157,42 @@ if [ "$profile" = diff ]; then
 fi
 
 allow_re="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
-trap 'rm -f "$tmp" "$masked" "$allow_re"' EXIT
+det_out="$(mktemp "${TMPDIR:-/tmp}/phi-scan.XXXXXX")"
+trap 'rm -f "$tmp" "$masked" "$allow_re" "$det_out"' EXIT
 if [ -n "$allow" ]; then
   grep -v -E '^[[:space:]]*(#|$)' "$allow" >"$allow_re" || true
 fi
 
+# The detector reads the same masked and dropped text the regex classes
+# match. Its stderr is discarded and its stdout may hold only class and line
+# number pairs; anything else, or a failed run, fails closed. The API key is
+# kept out of its environment.
+detector_error=0
+if [ "$detector" = pii-tracer ]; then
+  det_py="${PHI_DELEGATE_DETECTOR_PYTHON:-$HOME/.phi-delegate/detector/venv/bin/python}"
+  det_dir="${PHI_DELEGATE_DETECTOR_DIR:-$HOME/.phi-delegate/detector/pii-tracer}"
+  if env -u PHI_DELEGATE_API_KEY "$det_py" -I "$SCRIPT_DIR/phi-detector.py" "$det_dir" "$tmp" >"$det_out" 2>/dev/null; then
+    awk -F'\t' -v max="$(awk 'END { print NR }' "$tmp")" '
+      !(NF == 2 && $1 ~ /^model-(person|address|id)$/ && $2 ~ /^[1-9][0-9]*$/ && $2 + 0 <= max + 0) { bad = 1 }
+      END { exit bad }' "$det_out" || detector_error=1
+  else
+    detector_error=1
+  fi
+fi
+
 total=0
+selected() {
+  if [ -n "$only" ] && [[ ",$only," != *",$1,"* ]]; then return 1; fi
+  if [[ ",$skip," == *",$1,"* ]]; then return 1; fi
+  return 0
+}
+emit() {
+  printf '  %-28s %s line(s)\n' "$1" "$2"
+  total=$((total + $2))
+}
 report() {
   local label="$1" pattern="$2" flags="$3" n
-  if [ -n "$only" ] && [[ ",$only," != *",$label,"* ]]; then return 0; fi
-  if [[ ",$skip," == *",$label,"* ]]; then return 0; fi
+  selected "$label" || return 0
   # Matched lines stay inside this pipeline and are only counted.
   if [ -s "$allow_re" ]; then
     n="$({ grep "$flags" -E -- "$pattern" "$tmp" || true; } | { grep -c -v -E -f "$allow_re" || true; })"
@@ -150,10 +200,22 @@ report() {
     n="$(grep -c "$flags" -E -- "$pattern" "$tmp" || true)"
   fi
   n="${n:-0}"
-  if [ "$n" -gt 0 ]; then
-    printf '  %-28s %s line(s)\n' "$label" "$n"
-    total=$((total + n))
+  if [ "$n" -gt 0 ]; then emit "$label" "$n"; fi
+}
+report_model() {
+  local label="$1" nums n
+  selected "$label" || return 0
+  nums="$(awk -F'\t' -v c="$label" '$1 == c { print $2 }' "$det_out" | sort -un | tr '\n' ' ')"
+  [ -n "${nums// /}" ] || return 0
+  if [ -s "$allow_re" ]; then
+    # The flagged lines are pulled out by number only to be counted.
+    n="$(awk -v nums="$nums" 'BEGIN { k = split(nums, a, " "); for (i = 1; i <= k; i++) want[a[i]] = 1 }
+      FNR in want' "$tmp" | { grep -c -v -E -f "$allow_re" || true; })"
+  else
+    n="$(printf '%s' "$nums" | wc -w | tr -d ' ')"
   fi
+  n="${n:-0}"
+  if [ "$n" -gt 0 ]; then emit "$label" "$n"; fi
 }
 
 i=0
@@ -162,6 +224,11 @@ while [ "$i" -lt "${#class_names[@]}" ]; do
   report "${class_names[$i]}" "${class_regex[$i]}" "$cflag"
   i=$((i + 1))
 done
+if [ "$detector_error" -eq 1 ]; then
+  emit detector-error 1
+elif [ "$detector" = pii-tracer ]; then
+  for c in $MODEL_CLASSES; do report_model "$c"; done
+fi
 
 if [ "$total" -gt 0 ]; then
   echo "phi-scan: $total potential PHI line(s) flagged (text withheld)"

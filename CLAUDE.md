@@ -45,6 +45,10 @@ PHI-scanned handoff summary and file names.
   - `prepare-sidecar.sh` - creates an empty private input sidecar for the
     mod (folder 700, file 600, symlinks refused, git-excluded)
   - `phi-scan.sh` - heuristic PHI tripwire; reports counts, never text
+  - `phi-detector.py` - optional PII-Tracer detector phi-scan.sh runs when
+    PHI_DELEGATE_DETECTOR=pii-tracer; prints class and line number only
+  - `setup-detector.sh` - installs the detector's venv and hash-pinned
+    model files under `$HOME/.phi-delegate/detector`; `--check` verifies
   - `phi-patterns.tsv` - the one pattern source for phi-scan.sh and the mod
   - `gen-mod-data.sh` - writes the TypeScript copies of the patterns and
     fixtures; `--check` fails on drift
@@ -55,6 +59,8 @@ PHI-scanned handoff summary and file names.
   also registers the hook in user settings
 - `tests/` - bats suite, offline; `tests/mod/` holds the mod's
   `claude plugin test` files, including the scanner parity test
+- `eval/` - detector eval on a synthetic corpus: phi-scan.sh against the
+  PII-Tracer model; needs the model, so it is not part of CI
 
 ## Conventions
 
@@ -65,6 +71,10 @@ PHI-scanned handoff summary and file names.
 - Edit patterns only in `scripts/phi-patterns.tsv`, then run
   `scripts/gen-mod-data.sh`. Regexes must mean the same thing to
   `grep -E` and JavaScript; the parity test checks every fixture.
+- The model detector is off by default, and phi-scan.sh output is
+  unchanged when it is off. When it is on, any detector failure reports
+  `detector-error` (fail closed). gen-mod-data.sh and the bats suite force
+  it off.
 - The plugin is the documented install path; install.sh and the
   skill-only flow must keep working unchanged. The mod adds behavior and
   never removes a script flag or output line.

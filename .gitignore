@@ -2,6 +2,10 @@
 .phi-worktrees/
 .phi-tasks/
 
+# Detector eval results
+eval/out/
+eval/__pycache__/
+
 # Logs
 *.log
 
