@@ -101,8 +101,9 @@ scripts/check-env.sh               # verifies the install and runs a smoke scan
 - Only the person, address, account number, and other PII labels count,
   and only spans with confidence 0.8 or higher. Dates, phones, and emails
   stay with the regex. On the synthetic corpus in `eval/`, regex alone
-  withholds 52% of the samples that carry an identifier and 21% of clean
-  ones; regex plus the model withholds 92% and 29%.
+  withholds 58% of the samples that carry an identifier and 7% of clean
+  ones; regex plus the model withholds 96% and 18%. Most of the gain is
+  names and addresses, which the regex cannot see.
 - Staff and other non-patient names are flagged too. Put the known ones in
   the `--allow` file, which applies to model lines the same way.
 - It fails closed: if the detector is missing, fails, or prints anything
