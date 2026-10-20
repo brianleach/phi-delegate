@@ -17,10 +17,57 @@ setup() { SCAN="$(phi_repo_root)/scripts/phi-scan.sh"; }
 }
 
 @test "dob keyword and email are flagged" {
-  run bash -c "printf 'DOB: unknown\nmail someone@example.com\n' | '$SCAN'"
+  run bash -c "printf 'DOB: 1970\nmail someone@example.com\n' | '$SCAN'"
   [ "$status" -eq 1 ]
   [[ "$output" == *"dob-keyword"* ]]
   [[ "$output" == *"email-address"* ]]
+}
+
+# expect_class <class> <flagged|clean> <line>...: each line alone, scanned
+# for that one class.
+expect_class() {
+  local class="$1" want="$2" line
+  shift 2
+  for line in "$@"; do
+    run "$SCAN" --only "$class" <<<"$line"
+    if [ "$want" = flagged ]; then
+      [ "$status" -eq 1 ] || { echo "not flagged: $line"; return 1; }
+    else
+      [ "$status" -eq 0 ] || { echo "flagged: $line"; return 1; }
+    fi
+  done
+}
+
+@test "patient-name-keyword needs a capitalized value, quoted for name fields" {
+  expect_class patient-name-keyword flagged 'Patient name: Test Person' \
+    '"first_name": "Maria"' 'first_name: "Maria"' "firstName = 'Maria'" \
+    'LAST_NAME => "Sample"'
+  expect_class patient-name-keyword clean 'self.first_name = params[:first_name]' \
+    'attribute :first_name' 'SELECT first_name, dob FROM patients' 'first_name: "maria"' \
+    'first_name: String' 'first_name = Column(String)' 'firstName: Scalars'
+}
+
+@test "dob-keyword needs a date-like value after the key" {
+  expect_class dob-keyword flagged 'DOB 3 Mar 1984' 'date of birth 01/02/1970' \
+    'dob: "1984-03-03"' 'DOB: March 3, 1984' 'date_of_birth: "1950-04-01"'
+  expect_class dob-keyword clean 'attribute :dob' 'dob FROM' \
+    'the date of birth field rejects future dates' 'DOB may be blank'
+}
+
+@test "identifier-keyword needs an id-shaped value after the key" {
+  expect_class identifier-keyword flagged 'MRN SYN0000123' 'MRN A123456' \
+    'member id XKQ12345678' 'SSN (900-12-3456)' 'patient id: 48213' \
+    'MRN #: 12345' 'social security number: 900-12-3456' \
+    'member_id: "XKQ12345678"' 'patient_id: 48213'
+  expect_class identifier-keyword clean 'a migration for the MRN index' \
+    'the member id column' 'MRN 123' 'member_id = params[:member_id]'
+}
+
+@test "date-words flags written-out dates but not a git date header" {
+  expect_class date-words flagged 'born March 3, 1984' '3 Mar 1984' \
+    'Sept. 12th, 2001' 'the 3rd of March 1984'
+  expect_class date-words clean 'Date:   Mon Oct 19 14:32:10 2026 -0500' \
+    'you may 3 times 2001' 'March 2001'
 }
 
 @test "aws arn and ecr image uri are not flagged as long digit runs" {

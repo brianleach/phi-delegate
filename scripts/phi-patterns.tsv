@@ -36,9 +36,10 @@ class	phone-shaped	-	identifier	(\(|\b)[0-9]{3}(\) ?|[-. ])[0-9]{3}[-. ][0-9]{4}
 class	email-address	-	identifier	[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}
 class	date-shaped	-	identifier	\b(0?[1-9]|1[0-2])[/-](0?[1-9]|[12][0-9]|3[01])[/-]([0-9]{2}|[0-9]{4})\b
 class	iso-date	-	identifier	\b(19|20)[0-9]{2}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])\b
-class	dob-keyword	i	keyword,prose-skip	\b(dob|date of birth|birth ?date)\b
-class	identifier-keyword	i	keyword,prose-skip	\b(mrn|medical record|patient id|member id|policy number|ssn|social security)\b
-class	patient-name-keyword	i	keyword	\b(patient name|first_name|last_name|full_name)\s*[:=]
+class	date-words	i	identifier	\b((jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)\.?\s+(0?[1-9]|[12][0-9]|3[01])(st|nd|rd|th)?,?\s+(19|20)[0-9]{2}\b|(0?[1-9]|[12][0-9]|3[01])(st|nd|rd|th)?\s+(of\s+)?(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)\.?,?\s+(19|20)[0-9]{2}\b)
+class	dob-keyword	i	keyword,prose-skip	\b(dob|date[ _]of[ _]birth|birth[ _]?date)["']?\s*(=>|[:=(])?\s*["']?([0-9]|(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)\.?\s*[0-9])
+class	identifier-keyword	i	keyword,prose-skip	\b(mrn|medical[ _]record|patient[ _]id|member[ _]id|policy[ _]number|ssn|social[ _]security)\b(\s|["':=(#]|no\.|number){0,6}([a-z]{0,4}[0-9]{4,}|[0-9]{3}-[0-9]{2}-[0-9]{4})
+class	patient-name-keyword	-	keyword	([Pp]atient|PATIENT)[ _]?([Nn]ame|NAME)["']?\s*(:|=>|=)\s*["']?[A-Z][a-z]+|([Ff]irst|FIRST|[Ll]ast|LAST|[Ff]ull|FULL)[ _]?([Nn]ame|NAME)["']?\s*(:|=>|=)\s*["'][A-Z][a-z]+
 class	clinical-keyword	i	keyword,prose-skip	\b(diagnos(is|es)|icd-?10|rx|prescription|dosage)\b
 class	street-address	i	identifier	\b[0-9]{1,6} [A-Za-z0-9 .]+ (street|st|avenue|ave|road|rd|blvd|lane|ln|drive|dr)\b\.?
 class	long-digit-run	-	identifier	\b[0-9]{9,}\b

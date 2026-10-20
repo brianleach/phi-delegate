@@ -266,13 +266,19 @@ test('messages nobody typed are held back unasked', async ($, on) => {
 
 test('keyword classes are opt-in for prompts', async ($, on) => {
   stub(on)
-  expect(await submit($, 'add a dob column to the patients schema')).toEqual({ text: 'add a dob column to the patients schema' })
+  expect(await submit($, 'seed the fixture row with dob 1970')).toEqual({ text: 'seed the fixture row with dob 1970' })
 })
 
-test('with keyword classes on, schema words are flagged', { options: { prompt_keyword_classes: true } }, async ($, on) => {
+test('with keyword classes on, a keyword with a value is flagged', { options: { prompt_keyword_classes: true } }, async ($, on) => {
   const seen = stub(on, { answers: ['Cancel'] })
-  await submit($, 'add a dob column to the patients schema')
+  await submit($, 'seed the fixture row with dob 1970')
   expect(seen.asked[0]).toMatch(/dob-keyword 1/)
+})
+
+test('a written-out date in a prompt is flagged by default', async ($, on) => {
+  const seen = stub(on, { answers: ['Cancel'] })
+  await submit($, 'merge the record born March 3, 1984')
+  expect(seen.asked[0]).toMatch(/date-words 1/)
 })
 
 // The delegate tool
