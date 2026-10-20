@@ -1,5 +1,15 @@
 # Shared helpers for the phi-delegate bats suite. Load with: load helpers
 
+# A detector enabled in a developer's .env must not change scan results.
+export PHI_DELEGATE_DETECTOR=off
+
+# Assertions that fail a test from any line. Under bash 3.2 a false [[ ]] or
+# a negated command mid-test does not trip errexit; a failing function does.
+# shellcheck disable=SC2154  # bats `run` sets output
+has() { [[ "$output" == *"$1"* ]]; }
+lacks() { [[ "$output" != *"$1"* ]]; }
+no_grep() { ! grep -q "$@"; }
+
 phi_repo_root() {
   cd "${BATS_TEST_DIRNAME}/.." && pwd
 }

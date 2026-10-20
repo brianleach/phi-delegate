@@ -9,6 +9,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCAN="$ROOT/scripts/phi-scan.sh"
+# The mod's scanner has no model detector, so its parity data never does.
+export PHI_DELEGATE_DETECTOR=off
 PROFILES="default diff prose"
 # Two allowlist cases ride along: diffAllow (--profile diff with
 # ALLOW_ENTRIES) and edgeAllow (the default profile with EDGE_ENTRIES,

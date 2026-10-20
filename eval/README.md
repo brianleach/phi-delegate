@@ -33,7 +33,9 @@ directory with the Hugging Face hub forced offline.
   same text the scanner matches.
 - `run_tracer.py` - runs the model on raw and preprocessed text, with a
   confidence per span (the mean of 1 - P(O) over the span's tokens), in
-  whole-sample and per-paragraph windows.
+  whole-sample and per-paragraph windows. Model loading, windows, and
+  confidence come from `scripts/phi-detector.py`, so the eval measures the
+  detector `phi-scan.sh` runs. `run_regex.py` forces the detector off.
 - `score.py` - the gate verdict per bucket and kind, category recall, span
   quality, per-template results, a confidence and window sweep, and the
   fixture verdicts.

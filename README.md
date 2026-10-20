@@ -83,6 +83,39 @@ letters are not case-folded. Prose about the scanner
 itself trips the keyword classes under the default profile; use `--profile
 prose` for it.
 
+### Model detector (optional)
+
+The regex classes cannot see names, most street addresses, or account
+numbers without a keyword. With `PHI_DELEGATE_DETECTOR=pii-tracer`,
+`phi-scan.sh` also runs the PII-Tracer model (`scripts/phi-detector.py`) on
+the same masked and dropped text and adds three classes after the regex
+ones: `model-person`, `model-address`, and `model-id`. It is off by default,
+and the output is unchanged when it is off.
+
+```bash
+scripts/setup-detector.sh          # venv + model under ~/.phi-delegate/detector
+echo PHI_DELEGATE_DETECTOR=pii-tracer >>.env
+scripts/check-env.sh               # verifies the install and runs a smoke scan
+```
+
+- Only the person, address, account number, and other PII labels count,
+  and only spans with confidence 0.8 or higher. Dates, phones, and emails
+  stay with the regex. On the synthetic corpus in `eval/`, regex alone
+  withholds 52% of the samples that carry an identifier and 21% of clean
+  ones; regex plus the model withholds 92% and 29%.
+- Staff and other non-patient names are flagged too. Put the known ones in
+  the `--allow` file, which applies to model lines the same way.
+- It fails closed: if the detector is missing, fails, or prints anything
+  unexpected, the scan reports `detector-error` and withholds the text.
+  `--only` and `--skip` cannot hide it.
+- It runs offline. The model loads from a local directory with the Hugging
+  Face hub forced offline, and `setup-detector.sh` pins the revision, every
+  file's sha256 (including the model's Python code), and the package
+  versions.
+- Each scan pays a few seconds to load the model.
+- The mod's in-session scanner does not use it; only `phi-scan.sh` does, so
+  it covers the `delegate.sh` and `collect.sh` handoff and diff scans.
+
 ## Requirements
 
 - Claude Code CLI 2.1.287 or newer for the mod (2.1 or newer for the skill
@@ -118,6 +151,7 @@ PHI_DELEGATE_API_KEY=sk-ant-...
 PHI_DELEGATE_ZDR_ATTESTED=1
 # PHI_DELEGATE_MODEL=claude-opus-5
 # PHI_DELEGATE_CONFIG_DIR=$HOME/.phi-delegate/claude
+# PHI_DELEGATE_DETECTOR=pii-tracer   # optional, see "Model detector"
 ```
 
 `PHI_DELEGATE_ZDR_ATTESTED=1` is a deliberate manual step: there is no API
@@ -344,7 +378,8 @@ Not built yet, and out of scope for the first version of the mod:
   placeholders that map back to real values only in the covered lane
 - Display masking of flagged text in the transcript (`ui.render`)
 - Heartbeat and audit posting to a central monitoring service
-- A local NER or trained detection sidecar beside the regex classes
+- The model detector in the mod's in-session scanner (it runs in
+  `phi-scan.sh` only today)
 - A network backstop proxy
 
 ## License

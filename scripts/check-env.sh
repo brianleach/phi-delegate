@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Preflight for the phi-delegate skill. Verifies the claude CLI, the ZDR
 # key and attestation, isolation of the delegate config dir, the guard
-# hook in the orchestrator's settings, direct API auth, and a live smoke
-# test through phi-claude.sh. Exits nonzero with fix instructions.
+# hook in the orchestrator's settings, the model detector when it is
+# enabled, direct API auth, and a live smoke test through phi-claude.sh.
+# Exits nonzero with fix instructions.
 set -euo pipefail
 
 SMOKE_TIMEOUT_SECS="${PHI_DELEGATE_SMOKE_TIMEOUT_SECS:-120}"
@@ -65,6 +66,24 @@ elif [ -f "${HOME}/.claude/settings.json" ] && grep -q 'guard-hook.sh' "${HOME}/
 else
   warn "neither the phi-delegate plugin nor the guard hook is enabled in ~/.claude/settings.json" \
     "install the plugin (see README), or run install.sh --with-guard, so the orchestrator session is mechanically blocked from reading .phi-worktrees/ (managed settings may enable the plugin instead)"
+fi
+
+if [ "${PHI_DELEGATE_DETECTOR:-off}" != "off" ]; then
+  if "$SCRIPT_DIR/setup-detector.sh" --check >/dev/null 2>&1; then
+    pass "detector installed: model hashes and venv packages match the pins"
+  else
+    fail "detector $PHI_DELEGATE_DETECTOR is enabled but its install does not check out" \
+      "run scripts/setup-detector.sh (see scripts/setup-detector.sh --check for what is wrong), or set PHI_DELEGATE_DETECTOR=off"
+  fi
+  # A synthetic name the regex classes cannot see, so only the model flags it.
+  detector_smoke="$(printf 'Paired with Maria Okafor on the refill fix.\n' \
+    | "$SCRIPT_DIR/phi-scan.sh" --only model-person 2>&1 || true)"
+  if [[ "$detector_smoke" == *"model-person"* ]]; then
+    pass "detector smoke test: phi-scan.sh reports model-person"
+  else
+    fail "detector smoke test: phi-scan.sh did not report model-person" \
+      "run: printf 'Paired with Maria Okafor.\\n' | scripts/phi-scan.sh (detector-error means the model did not run)"
+  fi
 fi
 
 # Temp artifacts are removed by the EXIT trap so an interrupted run (Ctrl-C

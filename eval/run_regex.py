@@ -7,6 +7,7 @@ usage: run_regex.py REPO CORPUS OUT
 """
 
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -27,7 +28,8 @@ LINE = re.compile(r"^\s+(\S+)\s+(\d+) line\(s\)$")
 
 def scan(script, path, profile):
     args = [script] + (["--profile", profile] if profile != "default" else []) + [path]
-    proc = subprocess.run(args, capture_output=True, text=True)
+    # Regex only: a detector enabled in the developer's .env would mix model hits in.
+    proc = subprocess.run(args, capture_output=True, text=True, env={**os.environ, "PHI_DELEGATE_DETECTOR": "off"})
     if proc.returncode not in (0, 1):
         raise RuntimeError(f"phi-scan exit {proc.returncode}: {proc.stderr.strip()}")
     classes = {}

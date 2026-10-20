@@ -4,44 +4,36 @@ Loads the model from a local directory only (HF_HUB_OFFLINE is forced), so
 nothing is fetched at run time. Text longer than one window is split on line
 boundaries and the span offsets are shifted back.
 
-usage: run_tracer.py MODEL_DIR REPO CORPUS OUT [--device mps|cpu]
+usage: run_tracer.py MODEL_DIR REPO CORPUS OUT [--device cuda|mps|cpu]
 """
 
+import importlib.util
 import json
-import os
 import pathlib
 import statistics
 import sys
 import time
 
 # -I leaves the script folder off sys.path; preprocess.py lives beside this file
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
+# Loading, windowing, and span confidence come from the shipped detector, so
+# the eval measures what phi-scan.sh runs. Its file name has a hyphen, so it
+# is loaded by path. Importing it forces the Hugging Face hub offline.
+sys.dont_write_bytecode = True  # no __pycache__ left in scripts/
+_spec = importlib.util.spec_from_file_location("phi_detector", HERE.parent / "scripts" / "phi-detector.py")
+detector = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(detector)
+chunks, predict_conf = detector.chunks, detector.predict_conf
 
 import torch  # noqa: E402
-from transformers import AutoModel  # noqa: E402
 
 LABEL_TO_CAT = {
     "private_person": "person", "private_date": "date", "account_number": "id",
     "other_pii": "id", "private_address": "address", "private_email": "email",
     "private_phone": "phone", "private_url": "url", "secret": "secret",
 }
-CHUNK_CHARS = 10000  # well under 4096 tokens for English and code
-
-
-def chunks(text):
-    start, buf = 0, []
-    pos = 0
-    for line in text.splitlines(keepends=True):
-        if buf and pos - start + len(line) > CHUNK_CHARS:
-            yield start, "".join(buf)
-            start, buf = pos, []
-        buf.append(line)
-        pos += len(line)
-    if buf:
-        yield start, "".join(buf)
 
 
 def predict(model, text):
@@ -52,28 +44,6 @@ def predict(model, text):
         spans += [{"label": x.label, "cat": LABEL_TO_CAT.get(x.label, x.label),
                    "start": x.start + off, "end": x.end + off} for x in s]
     return spans, sens
-
-
-@torch.no_grad()
-def predict_conf(model, text):
-    """Spans with a confidence: the mean over the span's tokens of 1 - P(O)."""
-    if not text.strip():
-        return []
-    tok = model.tokenizer
-    enc = tok(text, return_offsets_mapping=True, return_tensors="pt", truncation=True,
-              max_length=model.config.max_seq_len)
-    if enc["input_ids"].shape[1] == 0:
-        return []
-    out = model(input_ids=enc["input_ids"].to(model.device), attention_mask=enc["attention_mask"].to(model.device))
-    logits = out.logits[0].float().cpu()
-    p_tag = 1.0 - logits.softmax(-1)[:, 0]
-    offsets = [tuple(o) for o in enc["offset_mapping"][0].tolist()]
-    res = []
-    for sp in model.viterbi.decode(logits, offsets, text=text):
-        idx = [i for i, (a, b) in enumerate(offsets) if a < sp.end and sp.start < b]
-        conf = float(p_tag[idx].mean()) if idx else 0.0
-        res.append({"label": sp.label, "start": sp.start, "end": sp.end, "conf": round(conf, 4)})
-    return res
 
 
 def para_chunks(text, cap=1200):
@@ -101,8 +71,7 @@ def main(model_dir, repo, corpus, out, device):
     from preprocess import Preprocessor
     pre = Preprocessor(repo)
     t_load = time.perf_counter()
-    model = AutoModel.from_pretrained(model_dir, trust_remote_code=True, local_files_only=True)
-    model.to(device).eval()
+    model = detector.load_model(model_dir, device)
     t_load = time.perf_counter() - t_load
     predict(model, "warm up the kernels")
 
@@ -152,7 +121,7 @@ def main(model_dir, repo, corpus, out, device):
 
 if __name__ == "__main__":
     a = sys.argv[1:]
-    dev = "mps" if torch.backends.mps.is_available() else "cpu"
+    dev = detector.pick_device()
     if "--device" in a:
         i = a.index("--device")
         dev = a[i + 1]
