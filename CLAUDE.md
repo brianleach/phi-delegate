@@ -55,6 +55,8 @@ PHI-scanned handoff summary and file names.
   also registers the hook in user settings
 - `tests/` - bats suite, offline; `tests/mod/` holds the mod's
   `claude plugin test` files, including the scanner parity test
+- `eval/` - detector eval on a synthetic corpus: phi-scan.sh against the
+  PII-Tracer model; needs the model, so it is not part of CI
 
 ## Conventions
 
