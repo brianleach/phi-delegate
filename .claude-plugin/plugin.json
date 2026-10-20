@@ -30,7 +30,7 @@
     "prompt_keyword_classes": {
       "type": "boolean",
       "title": "Scan prompts and tool output for keyword classes",
-      "description": "Also flag dob-keyword, identifier-keyword, patient-name-keyword, and clinical-keyword. Off by default because schema talk trips them.",
+      "description": "Also flag dob-keyword, identifier-keyword, patient-name-keyword, and clinical-keyword. Off by default because clinical words in ordinary engineering talk trip them.",
       "default": false
     },
     "allowlist_file": {

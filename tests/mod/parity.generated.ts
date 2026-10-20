@@ -56,6 +56,17 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
   {
+    name: "clean-keyword-fields.txt",
+    text: "  attributes :id, :email\n  attribute :first_name\n  attribute :dob\n    self.first_name = params[:first_name]\nSELECT id, first_name, dob FROM patients WHERE updated_at > $1 ORDER BY id LIMIT 500;\nAdded validation so the date of birth field rejects future dates, and a migration for the MRN index.\nThe member id column is now nullable; the DOB may be blank on import.\n",
+    counts: {
+      default: {},
+      diff: {},
+      prose: {},
+      diffAllow: {},
+      edgeAllow: {},
+    },
+  },
+  {
     name: "clean-log-p.diff",
     text: "commit 0587d0e771161526b50a3e4aef86c29e826264fe\nAuthor: Sample Dev <sample.dev@example.invalid>\nDate:   Mon Sep 28 10:00:00 2026 -0500\n\n    Raise the retry count\n    \n    Signed-off-by: Sample Dev <sample.dev@example.invalid>\n    Co-Authored-By: Helper Bot <helper.bot@example.invalid>\n\ndiff --git a/config.yml b/config.yml\nindex c802104..f59b320 100644\n--- a/config.yml\n+++ b/config.yml\n@@ -1 +1,2 @@\n-retries: 1\n+retries: 2\n+timeout_s: 30\n",
     counts: {
@@ -81,10 +92,10 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     name: "clean-readme.md",
     text: "The scanner is a tripwire for protected health information. It looks for\nSSN and phone shapes, email addresses, dates, MRN and DOB keywords, patient\nname fields, diagnosis and prescription words, street addresses, and long\ndigit runs, then reports a count per class without printing the text.\n",
     counts: {
-      default: {"dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
-      diff: {"dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
+      default: {"clinical-keyword": 1},
+      diff: {"clinical-keyword": 1},
       prose: {},
-      diffAllow: {"dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
+      diffAllow: {"clinical-keyword": 1},
       edgeAllow: {},
     },
   },
@@ -155,6 +166,17 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
   {
+    name: "dirty-date-words.txt",
+    text: "Merged the two accounts for the synthetic record born March 3, 1984.\nThe second record was 3 Mar 1984 in the old export.\n",
+    counts: {
+      default: {"date-words": 2},
+      diff: {"date-words": 2},
+      prose: {"date-words": 2},
+      diffAllow: {"date-words": 2},
+      edgeAllow: {},
+    },
+  },
+  {
     name: "dirty-dob.txt",
     text: "Patient name: Test Person, date of birth 01/02/1970.\n",
     counts: {
@@ -177,14 +199,25 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     },
   },
   {
+    name: "dirty-json-name.json",
+    text: "{\"first_name\": \"Maria\", \"last_name\": \"Sample\", \"status\": \"active\"}\n",
+    counts: {
+      default: {"patient-name-keyword": 1},
+      diff: {"patient-name-keyword": 1},
+      prose: {"patient-name-keyword": 1},
+      diffAllow: {"patient-name-keyword": 1},
+      edgeAllow: {},
+    },
+  },
+  {
     name: "dirty-midnight-dob.txt",
     text: "id,dob\n1,1980-03-14 00:00:00\n2,2019-07-02 00:00:00\n3,1975-11-30 08:15:00\n",
     counts: {
-      default: {"iso-date": 3, "dob-keyword": 1},
-      diff: {"iso-date": 3, "dob-keyword": 1},
+      default: {"iso-date": 3},
+      diff: {"iso-date": 3},
       prose: {"iso-date": 3},
-      diffAllow: {"iso-date": 3, "dob-keyword": 1},
-      edgeAllow: {"iso-date": 3, "dob-keyword": 1},
+      diffAllow: {"iso-date": 3},
+      edgeAllow: {"iso-date": 3},
     },
   },
   {
@@ -202,10 +235,10 @@ export const FIXTURES: { name: string; text: string; counts: Record<string, Reco
     name: "dirty-prose-ssn.md",
     text: "The scanner looks for a diagnosis word, a patient id, or a date of birth\nnear an identifier. For example, a synthetic record such as 987-65-4320\nin a note, or a callback number like 555-555-0187, must still be flagged\nwhen this page is scanned with the prose profile.\n",
     counts: {
-      default: {"ssn-shaped": 1, "phone-shaped": 1, "dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
-      diff: {"ssn-shaped": 1, "phone-shaped": 1, "dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
+      default: {"ssn-shaped": 1, "phone-shaped": 1, "clinical-keyword": 1},
+      diff: {"ssn-shaped": 1, "phone-shaped": 1, "clinical-keyword": 1},
       prose: {"ssn-shaped": 1, "phone-shaped": 1},
-      diffAllow: {"ssn-shaped": 1, "phone-shaped": 1, "dob-keyword": 1, "identifier-keyword": 1, "clinical-keyword": 1},
+      diffAllow: {"ssn-shaped": 1, "phone-shaped": 1, "clinical-keyword": 1},
       edgeAllow: {},
     },
   },

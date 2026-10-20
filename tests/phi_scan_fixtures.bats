@@ -30,11 +30,22 @@ expect_verdict() {
 }
 @test "clean: log excerpt passes" { expect_verdict clean clean-log.txt; }
 @test "clean: json config passes" { expect_verdict clean clean-config.json; }
+@test "clean: field names in code, SQL, and feature prose pass" {
+  expect_verdict clean clean-keyword-fields.txt
+}
 
 @test "dirty: ssn is flagged" { expect_verdict flagged dirty-ssn.txt; }
 @test "dirty: phone and street address are flagged" { expect_verdict flagged dirty-contact.txt; }
 @test "dirty: dob and patient name are flagged" { expect_verdict flagged dirty-dob.txt; }
 @test "dirty: clinical and mrn are flagged" { expect_verdict flagged dirty-clinical.txt; }
+@test "dirty: written-out dates are flagged" {
+  expect_verdict flagged dirty-date-words.txt
+  [[ "$output" == *"date-words                   2 line(s)"* ]]
+}
+@test "dirty: json name keys with values are flagged" {
+  expect_verdict flagged dirty-json-name.json
+  [[ "$output" == *"patient-name-keyword"* ]]
+}
 @test "dirty: email in diff content is flagged under diff profile" {
   expect_verdict flagged dirty-content.diff --profile diff
 }

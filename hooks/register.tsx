@@ -449,7 +449,7 @@ export const register: Register = (on, options) => {
   ).catch(() => ({ decision: 'deny', reason: CHECK_FAILED }))
 
   // Prompts scan the identifier-shaped classes; keyword classes are opt-in
-  // because schema talk trips them.
+  // because clinical words in ordinary engineering talk trip them.
   on('prompt.submit', async ($, e, next) => {
     if (await isOff($)) return next(e)
     const result = await scanText($, [e.text, ...(e.context ?? [])].join('\n'), 'default')

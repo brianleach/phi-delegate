@@ -1,0 +1,7 @@
+  attributes :id, :email
+  attribute :first_name
+  attribute :dob
+    self.first_name = params[:first_name]
+SELECT id, first_name, dob FROM patients WHERE updated_at > $1 ORDER BY id LIMIT 500;
+Added validation so the date of birth field rejects future dates, and a migration for the MRN index.
+The member id column is now nullable; the DOB may be blank on import.

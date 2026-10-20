@@ -51,9 +51,13 @@ it with `grep -E`, and the mod reads a generated TypeScript copy
 parity test holds the two to identical per-class counts on every fixture
 in `tests/fixtures/`.
 
-The classes are SSN, phone, email, date, and ISO date shapes, street
-addresses, long digit runs (the identifier classes), and DOB, identifier,
-patient-name, and clinical keywords (the keyword classes). Output is counts
+The classes are SSN, phone, email, date, ISO date, and written-out date
+(`March 3, 1984`, `3 Mar 1984`) shapes, street addresses, long digit runs
+(the identifier classes), and DOB, identifier, patient-name, and clinical
+keywords (the keyword classes). The DOB, identifier, and patient-name
+keywords count only when a value follows them (`DOB: 3 Mar 1984`,
+`MRN A123456`, `"first_name": "Maria"`), so field names in code and SQL do
+not trip them; the clinical keywords count on the word alone. Output is counts
 only. It is a tripwire, not a substitute for the delegate following its
 handoff instructions or for the human reviewing the full diff.
 
@@ -71,7 +75,7 @@ PHI: it skips the `dob-keyword`, `identifier-keyword`, and
 compose with either profile; `--allow <file>` reads an allowlist,
 conventionally `.phi-allow`, one regex per line, applied to matched lines.
 The allowlist is never loaded implicitly. The synthetic corpus in
-`tests/fixtures/` measures it: 7 clean fixtures pass, 11 dirty fixtures
+`tests/fixtures/` measures it: 9 clean fixtures pass, 14 dirty fixtures
 flagged, and `edge-` fixtures pin behavior the script and the mod must
 share (`bats tests/phi_scan_fixtures.bats`). The scanner runs in the C
 locale, so results are the same on macOS, Linux, and in the mod; non-ASCII
@@ -129,7 +133,7 @@ key=value` (the shell commands take effect in the next session):
 | Option | Default | What it does |
 |---|---|---|
 | `guardrail` | `auto` | `auto` turns the mod on, except for a skill-only `install.sh` setup (a `phi-delegate` symlink in `~/.claude/skills`), where it stays off until you choose `on`. `off` turns it off anywhere. The `PHI_DELEGATE_GUARDRAIL=on` or `off` environment variable overrides it. The covered delegate always stands down. |
-| `prompt_keyword_classes` | `false` | Also scan prompts and tool output for the keyword classes. Off because talking about schemas trips them. |
+| `prompt_keyword_classes` | `false` | Also scan prompts and tool output for the keyword classes. Off because clinical words in ordinary engineering talk trip them. |
 | `allowlist_file` | empty | A file of extended regexes, one per line, applied to matched lines (for example your company email domain). |
 | `allowlist` | none | The same, as a list in the plugin's options, added to the file's entries. |
 | `phi_sources` | `snowsql`, `psql` against a `*PROD*` variable | JavaScript regexes for Bash commands that reach PHI. A repo adds its own in a `.phi-sources` file at its root, same format. A pattern that does not compile, or a `.phi-sources` that cannot be read, blocks Bash until it is fixed. |
