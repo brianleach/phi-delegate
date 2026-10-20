@@ -38,17 +38,18 @@ expect_class() {
   done
 }
 
-@test "patient-name-keyword needs a capitalized value after the key" {
+@test "patient-name-keyword needs a capitalized value, quoted for name fields" {
   expect_class patient-name-keyword flagged 'Patient name: Test Person' \
     '"first_name": "Maria"' 'first_name: "Maria"' "firstName = 'Maria'" \
     'LAST_NAME => "Sample"'
   expect_class patient-name-keyword clean 'self.first_name = params[:first_name]' \
-    'attribute :first_name' 'SELECT first_name, dob FROM patients' 'first_name: "maria"'
+    'attribute :first_name' 'SELECT first_name, dob FROM patients' 'first_name: "maria"' \
+    'first_name: String' 'first_name = Column(String)' 'firstName: Scalars'
 }
 
 @test "dob-keyword needs a date-like value after the key" {
   expect_class dob-keyword flagged 'DOB 3 Mar 1984' 'date of birth 01/02/1970' \
-    'dob: "1984-03-03"' 'DOB: March 3, 1984'
+    'dob: "1984-03-03"' 'DOB: March 3, 1984' 'date_of_birth: "1950-04-01"'
   expect_class dob-keyword clean 'attribute :dob' 'dob FROM' \
     'the date of birth field rejects future dates' 'DOB may be blank'
 }
@@ -56,9 +57,10 @@ expect_class() {
 @test "identifier-keyword needs an id-shaped value after the key" {
   expect_class identifier-keyword flagged 'MRN SYN0000123' 'MRN A123456' \
     'member id XKQ12345678' 'SSN (900-12-3456)' 'patient id: 48213' \
-    'MRN #: 12345' 'social security number: 900-12-3456'
+    'MRN #: 12345' 'social security number: 900-12-3456' \
+    'member_id: "XKQ12345678"' 'patient_id: 48213'
   expect_class identifier-keyword clean 'a migration for the MRN index' \
-    'the member id column' 'MRN 123'
+    'the member id column' 'MRN 123' 'member_id = params[:member_id]'
 }
 
 @test "date-words flags written-out dates but not a git date header" {
